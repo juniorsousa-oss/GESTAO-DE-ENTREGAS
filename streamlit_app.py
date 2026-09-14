@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
@@ -88,8 +90,11 @@ def _multiselect_ui(self, label, options, *args, **kwargs):
 
 DeltaGenerator.multiselect = _multiselect_ui
 
-# Executa o aplicativo original, preservado integralmente neste módulo.
-import app_main  # noqa: E402,F401
+# Executa o aplicativo original em TODA renderização do Streamlit.
+# Não usamos import app_main aqui, porque módulos importados ficam em cache
+# e podem deixar a tela vazia após um rerun.
+_app_path = Path(__file__).with_name("app_main.py")
+exec(compile(_app_path.read_text(encoding="utf-8"), str(_app_path), "exec"), globals())
 
-# Marcador simples para confirmar que o Streamlit recebeu esta versão.
-st.sidebar.caption("UI build 02")
+# Marcador temporário para confirmar o novo build no Streamlit.
+st.sidebar.caption("UI build 03")
