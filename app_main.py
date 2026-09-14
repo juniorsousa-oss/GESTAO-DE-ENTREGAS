@@ -412,7 +412,7 @@ st.markdown('<div class="app-sub">Cronograma de Montagem • Materiais • Hist�
 
 with st.sidebar:
     st.markdown("### Navegação")
-    page = st.radio("Página", ["Dashboard", "Cronograma", "Materiais", "Histórico"], label_visibility="collapsed")
+    page = st.radio("Página", ["Dashboard", "Cronograma", "Carga histórica", "Materiais", "Histórico"], label_visibility="collapsed")
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")

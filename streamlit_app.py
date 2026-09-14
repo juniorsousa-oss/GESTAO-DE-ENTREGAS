@@ -610,18 +610,16 @@ def _render_historical_loader():
     for idx, uploaded in enumerate(files):
         default_date = _infer_date_from_filename(uploaded.name)
         with st.container(border=True):
-            c1, c2 = st.columns([2.2, 1])
-            with c1:
-                st.markdown(f"**{uploaded.name}**")
-            with c2:
-                ref = st.date_input(
-                    "Data de referência",
-                    value=min(default_date, date.today()),
-                    min_value=date(2026, 1, 1),
-                    max_value=date.today(),
-                    key=f"hist_ref_{idx}_{uploaded.name}",
-                    format="DD/MM/YYYY",
-                )
+            st.markdown(f"**Arquivo: {uploaded.name}**")
+            st.caption("Informe obrigatoriamente a data à qual este relatório pertence.")
+            ref = st.date_input(
+                "Data de referência deste arquivo",
+                value=min(default_date, date.today()),
+                min_value=date(2026, 1, 1),
+                max_value=date.today(),
+                key=f"hist_ref_{idx}_{uploaded.name}",
+                format="DD/MM/YYYY",
+            )
             dates.append(ref)
 
             try:
@@ -713,4 +711,4 @@ def _render_historical_loader():
 if globals().get("page") == "Carga histórica":
     _render_historical_loader()
 
-st.sidebar.caption("UI build 05")
+st.sidebar.caption("UI build 06")
