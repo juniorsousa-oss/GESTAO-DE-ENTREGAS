@@ -14,17 +14,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Apply patch
-        run: python scripts/patch_last_changes_v2.py
+      - name: Fix runtime patch
+        run: python scripts/fix_runtime_last_changes.py
       - name: Commit patch
         shell: bash
         run: |
           git config user.name "juniorsousa-oss"
           git config user.email "juniorsousa@unipam.edu.br"
-          git add app_main.py streamlit_runtime_v8.py
+          git add streamlit_runtime_v8.py
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Show persistent last schedule and separation changes"
+          git commit -m "Fix runtime parsing for separation change date"
           git push
