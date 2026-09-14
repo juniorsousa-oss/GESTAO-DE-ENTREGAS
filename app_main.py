@@ -416,7 +416,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 16")
+    st.caption("APP core build 17")
 
 
 if page == "Dashboard":
@@ -441,22 +441,6 @@ if page == "Dashboard":
     c4.metric("Entregues", total_delivered)
     c5.metric("Alertas críticos", alerts)
     c6.metric("Materiais p/ entrega", total_materials)
-
-    last_crono = None
-    if not schedule.empty and "ultima_alteracao_cronograma" in schedule.columns:
-        vals = pd.to_datetime(schedule["ultima_alteracao_cronograma"], errors="coerce").dropna()
-        if not vals.empty:
-            last_crono = vals.max().date()
-
-    last_team = None
-    if not schedule.empty and "ultima_alteracao_equipe" in schedule.columns:
-        vals = pd.to_datetime(schedule["ultima_alteracao_equipe"], errors="coerce").dropna()
-        if not vals.empty:
-            last_team = vals.max().date()
-
-    d1, d2 = st.columns(2)
-    d1.metric("Última alteração do cronograma", fmt_date(last_crono) if last_crono else "Sem registro")
-    d2.metric("Última alteração da equipe de separação", fmt_date(last_team) if last_team else "Sem registro")
 
     if alerts:
         st.markdown(f'<div class="critical"><b>{alerts} projeto(s) com tratativa PCP pendente.</b></div>', unsafe_allow_html=True)
