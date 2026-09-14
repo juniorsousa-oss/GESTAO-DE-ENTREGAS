@@ -1,0 +1,30 @@
+name: Apply dashboard click filters
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply_dashboard_click_filters.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/patch_dashboard_click_filters.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add app_main.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Make dashboard KPI cards filter project table"
+          git push
