@@ -311,16 +311,16 @@ def _metric_ui(self, label, value, *args, **kwargs):
         "Materiais p/ entrega": "materials",
     }
 
-    card_html = f'''
-    <div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};">
-        <div class="kpi-header">
-            <span class="kpi-dot"></span>
-            <span class="kpi-label">{escape(label_text)}</span>
-        </div>
-        <div class="kpi-value">{escape(value_text)}</div>
-        {delta_html}
-    </div>
-    '''
+    card_html = (
+        f'<div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};">'
+        '<div class="kpi-header">'
+        '<span class="kpi-dot"></span>'
+        f'<span class="kpi-label">{escape(label_text)}</span>'
+        '</div>'
+        f'<div class="kpi-value">{escape(value_text)}</div>'
+        f'{delta_html}'
+        '</div>'
+    )
 
     if label_text in filter_slugs:
         slug = filter_slugs[label_text]
@@ -344,6 +344,7 @@ def _metric_ui(self, label, value, *args, **kwargs):
     else:
         html = card_html
 
+    html = "".join(line.strip() for line in html.splitlines())
     return self.markdown(html, unsafe_allow_html=True)
 
 
