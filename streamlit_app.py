@@ -1,455 +1,301 @@
-
-import io
-from datetime import datetime, date
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
-# ============================================================
-# CONFIGURAÇÃO
-# ============================================================
 st.set_page_config(
-    page_title="Controle de Entregas à Produção",
+    page_title="Gestão de Entregas à Produção",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 TZ = ZoneInfo("America/Sao_Paulo")
-
-STATUS_PROJETO = ["Pendente", "Separado", "Entregue"]
-
+STATUS = ["Pendente", "Separado", "Entregue"]
 MASTER_COLS = [
-    "op", "psy", "cliente", "produto", "data_separacao",
-    "status", "ativo", "alerta_ativo", "tipo_alerta",
-    "tratativa_pcp", "ultimo_comentario", "ultima_atualizacao"
+    "op", "psy", "cliente", "produto", "data_separacao", "status",
+    "alerta_ativo", "tipo_alerta", "tratativa_pcp", "ultimo_comentario",
+    "ultima_atualizacao",
+]
+MATERIAL_COLS = [
+    "op", "codigo", "descricao", "quantidade_demanda", "data_cm",
+    "saldo_estoque", "situacao",
 ]
 
-MATERIAIS_COLS = [
-    "op", "codigo", "descricao", "quantidade_demanda",
-    "data_cm", "saldo_estoque", "situacao"
-]
-
-
-# ============================================================
-# ESTILO
-# ============================================================
 st.markdown(
     """
     <style>
-        .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
-        [data-testid="stSidebar"] {min-width: 250px; max-width: 250px;}
-        .app-title {font-size: 1.7rem; font-weight: 800; margin-bottom: .15rem;}
-        .app-subtitle {color: #6b7280; font-size: .95rem; margin-bottom: 1.1rem;}
-        .section-title {font-size: 1.15rem; font-weight: 750; margin-top: .25rem;}
-        .small-note {font-size: .83rem; color: #6b7280;}
-        .critical-box {
-            border: 1px solid #ef4444;
-            border-left: 6px solid #ef4444;
-            border-radius: 8px;
-            padding: 12px 14px;
-            background: rgba(239,68,68,.06);
-            margin: 8px 0 14px 0;
-        }
-        .warning-box {
-            border: 1px solid #f59e0b;
-            border-left: 6px solid #f59e0b;
-            border-radius: 8px;
-            padding: 12px 14px;
-            background: rgba(245,158,11,.06);
-            margin: 8px 0 14px 0;
-        }
+      .block-container {padding-top: 1.25rem; padding-bottom: 2rem;}
+      [data-testid="stSidebar"] {min-width: 245px; max-width: 245px;}
+      .app-title {font-size:1.65rem;font-weight:800;margin-bottom:.1rem;}
+      .app-sub {font-size:.92rem;color:#6b7280;margin-bottom:1rem;}
+      .critical {border:1px solid #ef4444;border-left:6px solid #ef4444;
+        border-radius:8px;padding:12px 14px;background:rgba(239,68,68,.06);margin:8px 0 14px;}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# ============================================================
-# ESTADO DO PROTÓTIPO
-# ============================================================
-def init_state():
-    defaults = {
-        "cronograma_master": pd.DataFrame(columns=MASTER_COLS),
-        "snapshot_ops": {},  # guarda TODAS as OPs do último Excel, inclusive sem data
-        "historico": [],
-        "comentarios": [],
-        "materiais": pd.DataFrame(columns=MATERIAIS_COLS),
-        "importacoes": [],
-        "cronograma_upload_key": 0,
-        "materiais_upload_key": 0,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-
-init_state()
-
-
-# ============================================================
-# FUNÇÕES AUXILIARES
-# ============================================================
-def agora():
+def now():
     return datetime.now(TZ)
 
 
-def hoje():
-    return agora().date()
+def today():
+    return now().date()
 
 
 def normalize_op(value):
     if pd.isna(value):
         return ""
     txt = str(value).strip()
-    if txt.endswith(".0"):
-        txt = txt[:-2]
-    return txt
+    return txt[:-2] if txt.endswith(".0") else txt
 
 
-def parse_date_series(series):
+def parse_dates(series):
     return pd.to_datetime(series, errors="coerce", dayfirst=True).dt.date
 
 
-def fmt_date(d):
-    if d is None or pd.isna(d):
+def fmt_date(value):
+    if value is None or pd.isna(value):
         return "Sem data"
-    if isinstance(d, pd.Timestamp):
-        d = d.date()
-    return d.strftime("%d/%m/%Y")
+    if isinstance(value, pd.Timestamp):
+        value = value.date()
+    return value.strftime("%d/%m/%Y")
 
 
-def add_history(op, evento, campo="", anterior="", novo="", usuario="Sistema", detalhe=""):
-    st.session_state.historico.append({
-        "data_hora": agora().strftime("%d/%m/%Y %H:%M:%S"),
-        "op": op,
-        "evento": evento,
-        "campo": campo,
-        "anterior": anterior,
-        "novo": novo,
-        "usuario": usuario,
-        "detalhe": detalhe,
-    })
+def init_state():
+    defaults = {
+        "schedule": pd.DataFrame(columns=MASTER_COLS),
+        "snapshot": {},
+        "ops_state": {},
+        "baseline_loaded": False,
+        "history": [],
+        "comments": [],
+        "materials": pd.DataFrame(columns=MATERIAL_COLS),
+        "imports": [],
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
-def read_excel(uploaded_file):
-    return pd.read_excel(uploaded_file)
+init_state()
 
 
-def find_column(df, candidates):
-    cols = list(df.columns)
-    normalized = {str(c).strip().lower(): c for c in cols}
-    for cand in candidates:
-        if cand.lower() in normalized:
-            return normalized[cand.lower()]
-    # busca parcial
-    for c in cols:
-        low = str(c).strip().lower()
-        for cand in candidates:
-            if cand.lower() in low:
-                return c
-    return cols[0] if cols else None
+def add_history(op, event, field="", old="", new="", user="Sistema", detail=""):
+    st.session_state.history.append(
+        {
+            "data_hora": now().strftime("%d/%m/%Y %H:%M:%S"),
+            "op": str(op),
+            "evento": event,
+            "campo": field,
+            "anterior": old,
+            "novo": new,
+            "responsavel": user,
+            "detalhe": detail,
+        }
+    )
 
 
-def get_master_row(op):
-    master = st.session_state.cronograma_master
-    if master.empty:
-        return None
-    hit = master[master["op"].astype(str) == str(op)]
-    if hit.empty:
-        return None
-    return hit.iloc[0].to_dict()
+def default_state():
+    return {
+        "status": "Pendente",
+        "alerta_ativo": False,
+        "tipo_alerta": "",
+        "tratativa_pcp": "",
+        "ultimo_comentario": "",
+    }
 
 
-def validate_unique_op(df_full):
-    """
-    Permite OP repetida somente se todos os registros repetidos tiverem a mesma data.
-    Como a regra de negócio é 1 data vigente por OP, conflito de datas bloqueia a importação.
-    """
-    temp = df_full.copy()
-    temp = temp[temp["op"] != ""]
-    conflicts = []
-    for op, grp in temp.groupby("op", dropna=False):
-        dates = {d for d in grp["data_separacao"].tolist() if d is not None and not pd.isna(d)}
-        if len(dates) > 1:
-            conflicts.append((op, sorted(list(dates))))
-    return conflicts
+def read_macro_schedule(uploaded_file):
+    raw = pd.read_excel(uploaded_file, sheet_name="Datas esperadas")
+    if raw.shape[1] < 22:
+        raise ValueError("A aba 'Datas esperadas' não possui a coluna V esperada para Separação.")
 
-
-def classify_schedule_change(old_dt, new_dt, existed_before):
-    """
-    Retorna: (tipo_alerta, alerta_critico, detalhe)
-    """
-    h = hoje()
-
-    if not existed_before and new_dt is not None:
-        if new_dt <= h:
-            return (
-                "NOVA OP FORA DO FLUXO",
-                True,
-                "OP entrou na base já programada para hoje ou para data vencida."
-            )
-        return ("NOVA OP", False, "OP nova incluída no cronograma.")
-
-    if old_dt is None and new_dt is not None:
-        if new_dt <= h:
-            return (
-                "INCLUSÃO FORA DO FLUXO",
-                True,
-                "OP estava sem data e recebeu programação para hoje ou para data vencida."
-            )
-        return ("PROGRAMAÇÃO INCLUÍDA", False, "OP que estava sem data passou a ter programação.")
-
-    if old_dt is not None and new_dt is None:
-        return ("DATA REMOVIDA", False, "A data de separação foi removida do cronograma.")
-
-    if old_dt is not None and new_dt is not None and old_dt != new_dt:
-        if old_dt > h and new_dt <= h:
-            return (
-                "ANTECIPAÇÃO FORA DO FLUXO",
-                True,
-                "OP futura foi antecipada para hoje ou para data vencida."
-            )
-        if new_dt < old_dt:
-            return ("ANTECIPAÇÃO DE CRONOGRAMA", False, "A data foi antecipada.")
-        if new_dt > old_dt:
-            return ("POSTERGAÇÃO DE CRONOGRAMA", False, "A data foi postergada.")
-
-    return ("SEM ALTERAÇÃO", False, "")
-
-
-def import_cronograma(df_raw, colmap, origem="Excel"):
-    # Monta base completa, inclusive OPs sem data.
-    base = pd.DataFrame({
-        "op": df_raw[colmap["op"]].map(normalize_op),
-        "psy": df_raw[colmap["psy"]].astype(str).replace("nan", "").str.strip(),
-        "cliente": df_raw[colmap["cliente"]].astype(str).replace("nan", "").str.strip(),
-        "produto": df_raw[colmap["produto"]].astype(str).replace("nan", "").str.strip(),
-        "data_separacao": parse_date_series(df_raw[colmap["data_separacao"]]),
-    })
-
+    base = pd.DataFrame(
+        {
+            "op": raw.iloc[:, 0].map(normalize_op),
+            "psy": raw.iloc[:, 1].fillna("").astype(str).str.strip(),
+            "cliente": raw.iloc[:, 2].fillna("").astype(str).str.strip(),
+            "produto": raw.iloc[:, 3].fillna("").astype(str).str.strip(),
+            "data_separacao": parse_dates(raw.iloc[:, 21]),
+        }
+    )
     base = base[base["op"] != ""].copy()
 
-    conflicts = validate_unique_op(base)
-    if conflicts:
-        return False, {
-            "tipo": "conflito_op",
-            "conflitos": conflicts
-        }
+    rows = []
+    repeated_ops = 0
+    for op, group in base.groupby("op", sort=False):
+        if len(group) > 1:
+            repeated_ops += 1
+        dated = group[group["data_separacao"].notna()]
+        if dated.empty:
+            row = group.iloc[0].copy()
+            row["data_separacao"] = None
+        else:
+            max_date = dated["data_separacao"].max()
+            row = dated[dated["data_separacao"] == max_date].iloc[-1].copy()
+        rows.append(row)
 
-    # Se houver duplicidade idêntica de OP/data, mantém a última linha do arquivo.
-    base = base.drop_duplicates(subset=["op"], keep="last").reset_index(drop=True)
+    consolidated = pd.DataFrame(rows, columns=["op", "psy", "cliente", "produto", "data_separacao"])
+    metadata = {
+        "linhas_excel": len(base),
+        "ops_unicas": len(consolidated),
+        "ops_com_data": int(consolidated["data_separacao"].notna().sum()),
+        "ops_sem_data": int(consolidated["data_separacao"].isna().sum()),
+        "ops_repetidas": repeated_ops,
+    }
+    return consolidated.reset_index(drop=True), metadata
 
-    previous_snapshot = st.session_state.snapshot_ops.copy()
-    old_master = st.session_state.cronograma_master.copy()
-    old_master_map = {}
-    if not old_master.empty:
-        old_master_map = {
-            str(r["op"]): r.to_dict()
-            for _, r in old_master.iterrows()
-        }
+
+def classify_change(old_date, new_date, existed):
+    h = today()
+    if not existed and new_date is not None:
+        if new_date <= h:
+            return "NOVA OP FORA DO FLUXO", True, "Nova OP entrou com data para hoje ou já vencida."
+        return "NOVA OP", False, "Nova OP incluída no cronograma."
+
+    if old_date is None and new_date is not None:
+        if new_date <= h:
+            return "INCLUSÃO FORA DO FLUXO", True, "OP sem data recebeu programação para hoje ou data vencida."
+        return "PROGRAMAÇÃO INCLUÍDA", False, "OP sem data passou a ter programação."
+
+    if old_date is not None and new_date is None:
+        return "DATA REMOVIDA", False, "Data de Separação removida."
+
+    if old_date is not None and new_date is not None and old_date != new_date:
+        if old_date > h and new_date <= h:
+            return "ANTECIPAÇÃO FORA DO FLUXO", True, "OP futura foi antecipada para hoje ou data vencida."
+        if new_date < old_date:
+            return "ANTECIPAÇÃO DE CRONOGRAMA", False, "Data de Separação antecipada."
+        return "POSTERGAÇÃO DE CRONOGRAMA", False, "Data de Separação postergada."
+
+    return "SEM ALTERAÇÃO", False, ""
+
+
+def import_schedule(base, metadata, source_name):
+    previous = st.session_state.snapshot.copy()
+    states = st.session_state.ops_state.copy()
+    baseline = not st.session_state.baseline_loaded
 
     new_snapshot = {}
-    new_master_rows = []
-    critical_events = []
-    change_events = []
+    master_rows = []
+    critical = []
+    changes = []
 
-    # OPs presentes no novo arquivo
-    for _, r in base.iterrows():
-        op = r["op"]
-        new_dt = r["data_separacao"]
-        if pd.isna(new_dt):
-            new_dt = None
+    for _, row in base.iterrows():
+        op = str(row["op"])
+        new_date = row["data_separacao"]
+        if pd.isna(new_date):
+            new_date = None
 
         new_snapshot[op] = {
             "op": op,
-            "psy": r["psy"],
-            "cliente": r["cliente"],
-            "produto": r["produto"],
-            "data_separacao": new_dt,
+            "psy": row["psy"],
+            "cliente": row["cliente"],
+            "produto": row["produto"],
+            "data_separacao": new_date,
         }
 
-        prev = previous_snapshot.get(op)
-        existed_before = prev is not None
-        old_dt = prev.get("data_separacao") if prev else None
+        state = states.get(op, default_state())
+        prev = previous.get(op)
+        existed = prev is not None
+        old_date = prev.get("data_separacao") if prev else None
 
-        # Preserva dados operacionais já registrados no aplicativo.
-        old_oper = old_master_map.get(op, {})
-        status = old_oper.get("status", "Pendente")
-        if status not in STATUS_PROJETO:
-            status = "Pendente"
-
-        prior_alert = bool(old_oper.get("alerta_ativo", False))
-        prior_alert_type = old_oper.get("tipo_alerta", "")
-        prior_treatment = old_oper.get("tratativa_pcp", "")
-        ultimo_comentario = old_oper.get("ultimo_comentario", "")
-
-        changed = (not existed_before) or (old_dt != new_dt)
-        change_type, is_critical, detail = classify_schedule_change(old_dt, new_dt, existed_before)
-
-        if changed:
-            if not existed_before:
-                add_history(
-                    op=op,
-                    evento="OP incluída na importação",
-                    campo="Data de Separação",
-                    anterior="Não existia",
-                    novo=fmt_date(new_dt),
-                    detalhe=detail,
-                )
-            else:
-                add_history(
-                    op=op,
-                    evento="Alteração de cronograma",
-                    campo="Data de Separação",
-                    anterior=fmt_date(old_dt),
-                    novo=fmt_date(new_dt),
-                    detalhe=detail,
-                )
-
-            change_events.append({
-                "op": op,
-                "anterior": fmt_date(old_dt) if existed_before else "Não existia",
-                "nova": fmt_date(new_dt),
-                "tipo": change_type,
-                "critico": is_critical,
-            })
-
-        if is_critical:
-            prior_alert = True
-            prior_alert_type = change_type
-            prior_treatment = "Pendente"
-            critical_events.append({
-                "op": op,
-                "tipo": change_type,
-                "anterior": fmt_date(old_dt) if existed_before else "Não existia",
-                "nova": fmt_date(new_dt),
-                "cliente": r["cliente"],
-                "produto": r["produto"],
-            })
+        if not baseline and ((not existed) or old_date != new_date):
+            kind, is_critical, detail = classify_change(old_date, new_date, existed)
             add_history(
-                op=op,
-                evento="ALERTA CRÍTICO DE CRONOGRAMA",
-                campo="Tratativa PCP",
-                anterior="",
-                novo="Pendente",
-                detalhe=detail,
+                op,
+                "Alteração de cronograma" if existed else "OP incluída na atualização",
+                "Data de Separação",
+                fmt_date(old_date) if existed else "Não existia",
+                fmt_date(new_date),
+                detail=detail,
+            )
+            changes.append(
+                {
+                    "OP": op,
+                    "Data anterior": fmt_date(old_date) if existed else "Não existia",
+                    "Nova data": fmt_date(new_date),
+                    "Alteração": kind,
+                    "Crítico": "SIM" if is_critical else "NÃO",
+                }
+            )
+            if is_critical:
+                state["alerta_ativo"] = True
+                state["tipo_alerta"] = kind
+                state["tratativa_pcp"] = "Pendente"
+                critical.append(
+                    {
+                        "OP": op,
+                        "Cliente": row["cliente"],
+                        "Produto": row["produto"],
+                        "Data anterior": fmt_date(old_date) if existed else "Não existia",
+                        "Nova data": fmt_date(new_date),
+                        "Ocorrência": kind,
+                    }
+                )
+                add_history(op, "ALERTA CRÍTICO DE CRONOGRAMA", "Tratativa PCP", "", "Pendente", detail=detail)
+
+        states[op] = state
+
+        if new_date is not None:
+            master_rows.append(
+                {
+                    "op": op,
+                    "psy": row["psy"],
+                    "cliente": row["cliente"],
+                    "produto": row["produto"],
+                    "data_separacao": new_date,
+                    "status": state.get("status", "Pendente"),
+                    "alerta_ativo": bool(state.get("alerta_ativo", False)),
+                    "tipo_alerta": state.get("tipo_alerta", ""),
+                    "tratativa_pcp": state.get("tratativa_pcp", ""),
+                    "ultimo_comentario": state.get("ultimo_comentario", ""),
+                    "ultima_atualizacao": now().strftime("%d/%m/%Y %H:%M"),
+                }
             )
 
-        # Somente OP com data vai para o Cronograma ativo.
-        if new_dt is not None:
-            new_master_rows.append({
-                "op": op,
-                "psy": r["psy"],
-                "cliente": r["cliente"],
-                "produto": r["produto"],
-                "data_separacao": new_dt,
-                "status": status,
-                "ativo": True,
-                "alerta_ativo": prior_alert,
-                "tipo_alerta": prior_alert_type,
-                "tratativa_pcp": prior_treatment,
-                "ultimo_comentario": ultimo_comentario,
-                "ultima_atualizacao": agora().strftime("%d/%m/%Y %H:%M"),
-            })
+    if not baseline:
+        for op in sorted(set(previous) - set(new_snapshot)):
+            old_date = previous[op].get("data_separacao")
+            add_history(op, "OP removida da base", "Data de Separação", fmt_date(old_date), "Fora da base")
+            changes.append(
+                {
+                    "OP": op,
+                    "Data anterior": fmt_date(old_date),
+                    "Nova data": "Fora da base",
+                    "Alteração": "REMOVIDA DA BASE",
+                    "Crítico": "NÃO",
+                }
+            )
 
-    # OPs que existiam no snapshot anterior e desapareceram completamente do novo arquivo.
-    removed_ops = set(previous_snapshot.keys()) - set(new_snapshot.keys())
-    for op in sorted(removed_ops):
-        old_dt = previous_snapshot[op].get("data_separacao")
-        add_history(
-            op=op,
-            evento="OP removida da base importada",
-            campo="Data de Separação",
-            anterior=fmt_date(old_dt),
-            novo="Fora da base",
-            detalhe="A OP deixou de aparecer no arquivo mais recente.",
-        )
-        change_events.append({
-            "op": op,
-            "anterior": fmt_date(old_dt),
-            "nova": "Fora da base",
-            "tipo": "REMOVIDA DA BASE",
-            "critico": False,
-        })
+    master = pd.DataFrame(master_rows, columns=MASTER_COLS)
+    if not master.empty:
+        master = master.sort_values(["data_separacao", "op"], ascending=[True, True]).reset_index(drop=True)
 
-    new_master = pd.DataFrame(new_master_rows, columns=MASTER_COLS)
-    if not new_master.empty:
-        new_master = new_master.sort_values(
-            ["data_separacao", "op"], ascending=[True, True]
-        ).reset_index(drop=True)
-
-    st.session_state.cronograma_master = new_master
-    st.session_state.snapshot_ops = new_snapshot
-    st.session_state.importacoes.append({
-        "data_hora": agora().strftime("%d/%m/%Y %H:%M:%S"),
-        "tipo": "Cronograma",
-        "origem": origem,
-        "registros_arquivo": len(base),
-        "registros_com_data": int(base["data_separacao"].notna().sum()),
-        "alertas_criticos": len(critical_events),
-    })
-
-    return True, {
-        "registros": len(base),
-        "ativos": len(new_master),
-        "criticos": critical_events,
-        "alteracoes": change_events,
-    }
+    st.session_state.schedule = master
+    st.session_state.snapshot = new_snapshot
+    st.session_state.ops_state = states
+    st.session_state.baseline_loaded = True
+    st.session_state.imports.append(
+        {
+            "data_hora": now().strftime("%d/%m/%Y %H:%M:%S"),
+            "arquivo": source_name,
+            "modo": "Carga inicial" if baseline else "Atualização",
+            **metadata,
+            "alertas_criticos": len(critical),
+        }
+    )
+    return baseline, critical, changes
 
 
-def import_materiais(df_raw, colmap, origem="MRP Consulta"):
-    base = pd.DataFrame({
-        "op": df_raw[colmap["op"]].map(normalize_op),
-        "codigo": df_raw[colmap["codigo"]].map(normalize_op),
-        "descricao": df_raw[colmap["descricao"]].astype(str).replace("nan", "").str.strip(),
-        "quantidade_demanda": pd.to_numeric(df_raw[colmap["quantidade_demanda"]], errors="coerce").fillna(0),
-        "data_cm": parse_date_series(df_raw[colmap["data_cm"]]),
-        "saldo_estoque": pd.to_numeric(df_raw[colmap["saldo_estoque"]], errors="coerce").fillna(0),
-    })
-
-    base = base[(base["op"] != "") & (base["codigo"] != "")].copy()
-
-    h = hoje()
-
-    def situacao(row):
-        dt = row["data_cm"]
-        saldo = row["saldo_estoque"]
-
-        if pd.isna(dt) or dt is None:
-            return "SEM DATA CM"
-        if dt <= h and saldo > 0:
-            return "ENTREGA PENDENTE"
-        if dt <= h and saldo <= 0:
-            return "SEM ESTOQUE"
-        return "AGUARDANDO DATA"
-
-    base["situacao"] = base.apply(situacao, axis=1)
-    base = base.sort_values(["data_cm", "op", "codigo"], na_position="last").reset_index(drop=True)
-
-    st.session_state.materiais = base[MATERIAIS_COLS]
-    st.session_state.importacoes.append({
-        "data_hora": agora().strftime("%d/%m/%Y %H:%M:%S"),
-        "tipo": "Materiais",
-        "origem": origem,
-        "registros_arquivo": len(base),
-        "registros_com_data": int(base["data_cm"].notna().sum()),
-        "alertas_criticos": int((base["situacao"] == "ENTREGA PENDENTE").sum()),
-    })
-
-    return {
-        "registros": len(base),
-        "entrega_pendente": int((base["situacao"] == "ENTREGA PENDENTE").sum()),
-        "sem_estoque": int((base["situacao"] == "SEM ESTOQUE").sum()),
-    }
-
-
-def save_status_changes(edited_df):
-    master = st.session_state.cronograma_master.copy()
+def save_status(edited):
+    master = st.session_state.schedule.copy()
     changed = 0
-
-    for _, row in edited_df.iterrows():
+    for _, row in edited.iterrows():
         op = str(row["op"])
         new_status = row["status"]
         idxs = master.index[master["op"].astype(str) == op].tolist()
@@ -457,767 +303,359 @@ def save_status_changes(edited_df):
             continue
         idx = idxs[0]
         old_status = master.at[idx, "status"]
-
-        if old_status != new_status:
+        if new_status != old_status:
             master.at[idx, "status"] = new_status
-            master.at[idx, "ultima_atualizacao"] = agora().strftime("%d/%m/%Y %H:%M")
-            add_history(
-                op=op,
-                evento="Alteração de status",
-                campo="Status",
-                anterior=old_status,
-                novo=new_status,
-                usuario="Operador",
-            )
+            master.at[idx, "ultima_atualizacao"] = now().strftime("%d/%m/%Y %H:%M")
+            state = st.session_state.ops_state.get(op, default_state())
+            state["status"] = new_status
+            st.session_state.ops_state[op] = state
+            add_history(op, "Alteração de status", "Status", old_status, new_status, user="Operador")
             changed += 1
-
-    st.session_state.cronograma_master = master
+    st.session_state.schedule = master
     return changed
 
 
-def add_comment(op, comentario, usuario="Operador"):
-    comentario = comentario.strip()
-    if not comentario:
+def add_comment(op, comment, user):
+    comment = comment.strip()
+    if not comment:
         return False
+    st.session_state.comments.append(
+        {
+            "data_hora": now().strftime("%d/%m/%Y %H:%M:%S"),
+            "op": str(op),
+            "responsavel": user or "Operador",
+            "comentario": comment,
+        }
+    )
+    state = st.session_state.ops_state.get(str(op), default_state())
+    state["ultimo_comentario"] = comment
+    st.session_state.ops_state[str(op)] = state
+    master = st.session_state.schedule.copy()
+    idxs = master.index[master["op"].astype(str) == str(op)].tolist()
+    if idxs:
+        master.at[idxs[0], "ultimo_comentario"] = comment
+        st.session_state.schedule = master
+    add_history(op, "Comentário registrado", "Comentário", "", comment, user=user or "Operador")
+    return True
 
-    st.session_state.comentarios.append({
-        "data_hora": agora().strftime("%d/%m/%Y %H:%M:%S"),
-        "op": op,
-        "usuario": usuario,
-        "comentario": comentario,
-    })
 
-    master = st.session_state.cronograma_master.copy()
+def close_treatment(op, detail, user):
+    state = st.session_state.ops_state.get(str(op), default_state())
+    state["alerta_ativo"] = False
+    state["tratativa_pcp"] = "Concluída"
+    st.session_state.ops_state[str(op)] = state
+
+    master = st.session_state.schedule.copy()
     idxs = master.index[master["op"].astype(str) == str(op)].tolist()
     if idxs:
         idx = idxs[0]
-        master.at[idx, "ultimo_comentario"] = comentario
-        master.at[idx, "ultima_atualizacao"] = agora().strftime("%d/%m/%Y %H:%M")
-        st.session_state.cronograma_master = master
+        master.at[idx, "alerta_ativo"] = False
+        master.at[idx, "tratativa_pcp"] = "Concluída"
+        st.session_state.schedule = master
 
-    add_history(
-        op=op,
-        evento="Comentário registrado",
-        campo="Comentário",
-        anterior="",
-        novo=comentario,
-        usuario=usuario,
-    )
-    return True
+    add_history(op, "Tratativa PCP concluída", "Tratativa PCP", "Pendente", "Concluída", user=user or "Operador", detail=detail)
 
 
-def close_pcp_treatment(op, observacao, usuario="Operador"):
-    master = st.session_state.cronograma_master.copy()
-    idxs = master.index[master["op"].astype(str) == str(op)].tolist()
-    if not idxs:
-        return False
-
-    idx = idxs[0]
-    old_type = master.at[idx, "tipo_alerta"]
-    master.at[idx, "alerta_ativo"] = False
-    master.at[idx, "tratativa_pcp"] = "Concluída"
-    master.at[idx, "ultima_atualizacao"] = agora().strftime("%d/%m/%Y %H:%M")
-    st.session_state.cronograma_master = master
-
-    add_history(
-        op=op,
-        evento="Tratativa PCP concluída",
-        campo="Tratativa PCP",
-        anterior="Pendente",
-        novo="Concluída",
-        usuario=usuario,
-        detalhe=f"{old_type}. {observacao.strip()}".strip(),
-    )
-    return True
+def find_col(df, names):
+    cols = list(df.columns)
+    norm = {str(c).strip().lower(): c for c in cols}
+    for name in names:
+        if name.lower() in norm:
+            return norm[name.lower()]
+    for c in cols:
+        low = str(c).lower()
+        if any(name.lower() in low for name in names):
+            return c
+    return cols[0] if cols else None
 
 
-# ============================================================
-# DEMONSTRAÇÃO
-# ============================================================
-def demo_initial():
-    h = hoje()
-    df = pd.DataFrame({
-        "OP": ["1001", "1002", "1003", "1004", "1005"],
-        "PSY": ["PSY-01", "PSY-02", "PSY-03", "PSY-04", "PSY-05"],
-        "Cliente": ["Cliente A", "Cliente B", "Cliente C", "Cliente D", "Cliente E"],
-        "Produto": ["QGBT", "Cabine MT", "Painel", "TC/TP", "Quadro"],
-        "Data Separação": [
-            h + pd.Timedelta(days=2),
-            h + pd.Timedelta(days=4),
-            pd.NaT,  # importante: fica no snapshot, mas não aparece no cronograma
-            h + pd.Timedelta(days=7),
-            h + pd.Timedelta(days=1),
-        ],
-    })
-    return import_cronograma(
-        df,
+def import_materials(raw, mapping):
+    base = pd.DataFrame(
         {
-            "op": "OP",
-            "psy": "PSY",
-            "cliente": "Cliente",
-            "produto": "Produto",
-            "data_separacao": "Data Separação",
-        },
-        origem="Demonstração inicial",
+            "op": raw[mapping["op"]].map(normalize_op),
+            "codigo": raw[mapping["codigo"]].map(normalize_op),
+            "descricao": raw[mapping["descricao"]].fillna("").astype(str).str.strip(),
+            "quantidade_demanda": pd.to_numeric(raw[mapping["quantidade"]], errors="coerce").fillna(0),
+            "data_cm": parse_dates(raw[mapping["data_cm"]]),
+            "saldo_estoque": pd.to_numeric(raw[mapping["saldo"]], errors="coerce").fillna(0),
+        }
     )
+    base = base[(base["op"] != "") & (base["codigo"] != "")].copy()
+
+    def situation(row):
+        d = row["data_cm"]
+        saldo = row["saldo_estoque"]
+        if d is None or pd.isna(d):
+            return "SEM DATA CM"
+        if d <= today() and saldo > 0:
+            return "ENTREGA PENDENTE"
+        if d <= today() and saldo <= 0:
+            return "SEM ESTOQUE"
+        return "AGUARDANDO DATA"
+
+    base["situacao"] = base.apply(situation, axis=1)
+    st.session_state.materials = base[MATERIAL_COLS].sort_values(["data_cm", "op"], na_position="last").reset_index(drop=True)
 
 
-def demo_update():
-    h = hoje()
-    df = pd.DataFrame({
-        "OP": ["1001", "1002", "1003", "1004", "1006"],
-        "PSY": ["PSY-01", "PSY-02", "PSY-03", "PSY-04", "PSY-06"],
-        "Cliente": ["Cliente A", "Cliente B", "Cliente C", "Cliente D", "Cliente F"],
-        "Produto": ["QGBT", "Cabine MT", "Painel", "TC/TP", "Painel BT"],
-        "Data Separação": [
-            h + pd.Timedelta(days=2),  # sem mudança
-            h,                         # futura -> hoje: crítico
-            h - pd.Timedelta(days=1),  # sem data -> ontem: crítico
-            h + pd.Timedelta(days=10), # postergação
-            h,                         # OP nova para hoje: crítico
-        ],
-    })
-    return import_cronograma(
-        df,
-        {
-            "op": "OP",
-            "psy": "PSY",
-            "cliente": "Cliente",
-            "produto": "Produto",
-            "data_separacao": "Data Separação",
-        },
-        origem="Demonstração atualização crítica",
-    )
-
-
-def demo_materials():
-    h = hoje()
-    df = pd.DataFrame({
-        "OP": ["1001", "1001", "1002", "1003", "1004", "1006"],
-        "Código": ["MAT001", "MAT002", "MAT003", "MAT004", "MAT005", "MAT006"],
-        "Descrição": ["Cabo", "Disjuntor", "Barramento", "Isolador", "Terminal", "Parafuso"],
-        "Qtd Demanda": [20, 1, 4, 8, 10, 100],
-        "Data CM": [
-            h - pd.Timedelta(days=2),
-            h + pd.Timedelta(days=2),
-            h,
-            h - pd.Timedelta(days=1),
-            pd.NaT,
-            h,
-        ],
-        "Saldo Estoque": [25, 3, 0, 10, 50, 500],
-    })
-    return import_materiais(
-        df,
-        {
-            "op": "OP",
-            "codigo": "Código",
-            "descricao": "Descrição",
-            "quantidade_demanda": "Qtd Demanda",
-            "data_cm": "Data CM",
-            "saldo_estoque": "Saldo Estoque",
-        },
-        origem="Demonstração MRP",
-    )
-
-
-# ============================================================
-# CABEÇALHO / MENU
-# ============================================================
-st.markdown('<div class="app-title">Controle de Entregas à Produção</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="app-subtitle">Cronograma • Materiais • Histórico • Indicadores</div>',
-    unsafe_allow_html=True,
-)
+st.markdown('<div class="app-title">Gestão de Entregas à Produção</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-sub">Cronograma de Montagem • Materiais • Histórico • Dashboard</div>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.markdown("### Navegação")
-    pagina = st.radio(
-        "Ir para",
-        ["Dashboard", "Cronograma", "Materiais", "Histórico"],
-        label_visibility="collapsed",
-    )
-
+    page = st.radio("Página", ["Dashboard", "Cronograma", "Materiais", "Histórico"], label_visibility="collapsed")
     st.divider()
-    st.caption(f"Data operacional: {hoje().strftime('%d/%m/%Y')}")
-    st.caption("Versão: protótipo para validação")
-
-    with st.expander("Dados de demonstração"):
-        if st.button("1. Carregar base inicial", use_container_width=True):
-            ok, result = demo_initial()
-            if ok:
-                st.success("Base inicial carregada.")
-                st.rerun()
-
-        if st.button("2. Simular atualização crítica", use_container_width=True):
-            ok, result = demo_update()
-            if ok:
-                st.success("Atualização simulada.")
-                st.rerun()
-
-        if st.button("3. Carregar materiais demo", use_container_width=True):
-            demo_materials()
-            st.success("Materiais carregados.")
-            st.rerun()
-
-        if st.button("Limpar protótipo", use_container_width=True):
-            keys = list(st.session_state.keys())
-            for key in keys:
-                del st.session_state[key]
-            st.rerun()
+    st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
+    st.caption("Versão: validação do cronograma")
 
 
-# ============================================================
-# DASHBOARD
-# ============================================================
-if pagina == "Dashboard":
-    st.markdown('<div class="section-title">Visão geral</div>', unsafe_allow_html=True)
-
-    crono = st.session_state.cronograma_master
-    mats = st.session_state.materiais
-
-    total = len(crono)
-    pendentes = int((crono["status"] == "Pendente").sum()) if not crono.empty else 0
-    separados = int((crono["status"] == "Separado").sum()) if not crono.empty else 0
-    entregues = int((crono["status"] == "Entregue").sum()) if not crono.empty else 0
-    alertas = int(crono["alerta_ativo"].fillna(False).astype(bool).sum()) if not crono.empty else 0
-    entrega_pendente = int((mats["situacao"] == "ENTREGA PENDENTE").sum()) if not mats.empty else 0
+if page == "Dashboard":
+    schedule = st.session_state.schedule
+    materials = st.session_state.materials
+    alerts = int(schedule["alerta_ativo"].fillna(False).astype(bool).sum()) if not schedule.empty else 0
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Projetos", total)
-    c2.metric("Pendentes", pendentes)
-    c3.metric("Separados", separados)
-    c4.metric("Entregues", entregues)
-    c5.metric("Alertas críticos", alertas)
-    c6.metric("Materiais p/ entrega", entrega_pendente)
+    c1.metric("Projetos", len(schedule))
+    c2.metric("Pendentes", int((schedule["status"] == "Pendente").sum()) if not schedule.empty else 0)
+    c3.metric("Separados", int((schedule["status"] == "Separado").sum()) if not schedule.empty else 0)
+    c4.metric("Entregues", int((schedule["status"] == "Entregue").sum()) if not schedule.empty else 0)
+    c5.metric("Alertas críticos", alerts)
+    c6.metric("Materiais p/ entrega", int((materials["situacao"] == "ENTREGA PENDENTE").sum()) if not materials.empty else 0)
 
-    if alertas > 0:
-        st.markdown(
-            f"""
-            <div class="critical-box">
-                <b>{alertas} projeto(s) exigem tratativa com o PCP.</b><br>
-                São alterações de cronograma que colocaram a OP para hoje ou para uma data já vencida.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    col_a, col_b = st.columns([1, 1])
-
-    with col_a:
-        st.markdown("#### Status dos projetos")
-        if crono.empty:
-            st.info("Nenhum cronograma carregado.")
-        else:
-            status_df = (
-                crono.groupby("status", dropna=False)
-                .size()
-                .rename("Quantidade")
-                .reindex(STATUS_PROJETO, fill_value=0)
-                .to_frame()
-            )
-            st.bar_chart(status_df)
-
-    with col_b:
-        st.markdown("#### Situação dos materiais")
-        if mats.empty:
-            st.info("Nenhuma base de materiais carregada.")
-        else:
-            mat_df = mats.groupby("situacao").size().rename("Quantidade").to_frame()
-            st.bar_chart(mat_df)
+    if alerts:
+        st.markdown(f'<div class="critical"><b>{alerts} projeto(s) com tratativa PCP pendente.</b></div>', unsafe_allow_html=True)
 
     st.markdown("#### Próximas separações")
-    if crono.empty:
-        st.info("Importe o cronograma ou use os dados de demonstração.")
+    if schedule.empty:
+        st.info("Carregue o cronograma para iniciar.")
     else:
-        view = crono[
-            ["op", "psy", "cliente", "produto", "data_separacao", "status", "tipo_alerta"]
-        ].copy()
-        view.columns = ["OP", "PSY", "Cliente", "Produto", "Data Separação", "Status", "Alerta"]
-        st.dataframe(view.head(15), use_container_width=True, hide_index=True)
+        st.dataframe(
+            schedule[["op", "psy", "cliente", "produto", "data_separacao", "status", "tipo_alerta"]].head(20),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
+        )
 
 
-# ============================================================
-# CRONOGRAMA
-# ============================================================
-elif pagina == "Cronograma":
-    st.markdown('<div class="section-title">Cronograma</div>', unsafe_allow_html=True)
-    st.caption(
-        "A tela mostra somente OPs com Data de Separação. "
-        "Internamente, o sistema preserva as OPs sem data para comparar as próximas importações."
-    )
+elif page == "Cronograma":
+    tab_current, tab_import, tab_pcp = st.tabs(["Cronograma atual", "Importar Excel", "Tratativa PCP"])
 
-    tab1, tab2, tab3 = st.tabs(["Cronograma atual", "Importar Excel", "Tratativa PCP"])
-
-    with tab1:
-        crono = st.session_state.cronograma_master.copy()
-
-        if crono.empty:
-            st.info("Nenhuma OP com data carregada.")
+    with tab_current:
+        schedule = st.session_state.schedule.copy()
+        if schedule.empty:
+            st.info("Nenhuma OP com Data de Separação carregada.")
         else:
-            f1, f2, f3 = st.columns([1.2, 1, 1])
-            with f1:
-                busca = st.text_input("Buscar OP / cliente / produto")
-            with f2:
-                status_filter = st.multiselect("Status", STATUS_PROJETO, default=STATUS_PROJETO)
-            with f3:
-                somente_alerta = st.checkbox("Somente alertas críticos")
+            f1, f2, f3 = st.columns([1.4, 1, 1])
+            search = f1.text_input("Buscar OP / cliente / produto")
+            status_filter = f2.multiselect("Status", STATUS, default=STATUS)
+            only_alerts = f3.checkbox("Somente alertas críticos")
 
-            filtered = crono.copy()
-
-            if busca.strip():
-                term = busca.strip().lower()
+            view = schedule[schedule["status"].isin(status_filter)].copy()
+            if search.strip():
+                term = search.strip().lower()
                 mask = (
-                    filtered["op"].astype(str).str.lower().str.contains(term, na=False)
-                    | filtered["cliente"].astype(str).str.lower().str.contains(term, na=False)
-                    | filtered["produto"].astype(str).str.lower().str.contains(term, na=False)
-                    | filtered["psy"].astype(str).str.lower().str.contains(term, na=False)
+                    view["op"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["psy"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["cliente"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["produto"].astype(str).str.lower().str.contains(term, na=False)
                 )
-                filtered = filtered[mask]
+                view = view[mask]
+            if only_alerts:
+                view = view[view["alerta_ativo"]]
 
-            filtered = filtered[filtered["status"].isin(status_filter)]
-
-            if somente_alerta:
-                filtered = filtered[filtered["alerta_ativo"] == True]
-
-            filtered = filtered.sort_values(["data_separacao", "op"]).reset_index(drop=True)
-
-            display_cols = [
-                "op", "psy", "cliente", "produto", "data_separacao",
-                "status", "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
-            ]
+            view = view.sort_values(["data_separacao", "op"])
             edited = st.data_editor(
-                filtered[display_cols],
+                view[["op", "psy", "cliente", "produto", "data_separacao", "status", "tipo_alerta", "tratativa_pcp", "ultimo_comentario"]],
                 use_container_width=True,
                 hide_index=True,
-                disabled=[
-                    "op", "psy", "cliente", "produto", "data_separacao",
-                    "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
-                ],
+                disabled=["op", "psy", "cliente", "produto", "data_separacao", "tipo_alerta", "tratativa_pcp", "ultimo_comentario"],
                 column_config={
                     "op": "OP",
                     "psy": "PSY",
                     "cliente": "Cliente",
                     "produto": "Produto",
-                    "data_separacao": st.column_config.DateColumn(
-                        "Data Separação", format="DD/MM/YYYY"
-                    ),
-                    "status": st.column_config.SelectboxColumn(
-                        "Status",
-                        options=STATUS_PROJETO,
-                        required=True,
-                    ),
+                    "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                    "status": st.column_config.SelectboxColumn("Status", options=STATUS, required=True),
                     "tipo_alerta": "Alerta",
                     "tratativa_pcp": "Tratativa PCP",
                     "ultimo_comentario": "Último comentário",
                 },
-                key="editor_cronograma",
             )
-
             if st.button("Salvar alterações de status", type="primary"):
-                changed = save_status_changes(edited)
-                if changed:
-                    st.success(f"{changed} alteração(ões) de status registrada(s).")
-                else:
-                    st.info("Nenhum status foi alterado.")
+                count = save_status(edited)
+                st.success(f"{count} alteração(ões) de status salva(s).") if count else st.info("Nenhum status foi alterado.")
                 st.rerun()
 
             st.divider()
-            st.markdown("#### Registrar comentário")
-
-            op_options = filtered["op"].astype(str).tolist()
+            st.markdown("#### Comentários do projeto")
+            op_options = view["op"].astype(str).tolist()
             if op_options:
                 c1, c2 = st.columns([1, 3])
-                with c1:
-                    op_comment = st.selectbox("OP", op_options, key="op_comment")
-                    usuario_comment = st.text_input("Responsável", value="Operador")
-                with c2:
-                    comentario = st.text_area(
-                        "Comentário",
-                        placeholder="Ex.: Projeto parcialmente separado; aguardando chegada do item X.",
-                        height=100,
-                    )
-
-                if st.button("Adicionar comentário"):
-                    if add_comment(op_comment, comentario, usuario_comment or "Operador"):
+                op_comment = c1.selectbox("OP", op_options)
+                user_comment = c1.text_input("Responsável", value="Operador")
+                comment = c2.text_area("Comentário", height=95)
+                if st.button("Registrar comentário"):
+                    if add_comment(op_comment, comment, user_comment):
                         st.success("Comentário registrado.")
                         st.rerun()
-                    else:
-                        st.warning("Digite um comentário.")
+                    st.warning("Informe um comentário.")
 
-                comms = pd.DataFrame(st.session_state.comentarios)
-                if not comms.empty:
-                    comms = comms[comms["op"].astype(str) == str(op_comment)]
-                    if not comms.empty:
-                        st.markdown("##### Histórico de comentários da OP")
-                        st.dataframe(
-                            comms.sort_index(ascending=False),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
+                comments = pd.DataFrame(st.session_state.comments)
+                if not comments.empty:
+                    comments = comments[comments["op"].astype(str) == op_comment]
+                    if not comments.empty:
+                        st.dataframe(comments.iloc[::-1], use_container_width=True, hide_index=True)
 
-    with tab2:
-        st.markdown("#### Importação do cronograma")
-        st.caption(
-            "Nesta primeira versão você escolhe quais colunas do Excel correspondem aos campos do sistema. "
-            "Depois que validarmos o layout real da planilha, essa leitura pode ficar automática."
-        )
+    with tab_import:
+        st.markdown("#### Importação do Cronograma de Montagem")
+        st.caption("Modelo SEN-PCP-FOR-022 • Aba 'Datas esperadas' • A=OP • B=PSY • C=Cliente • D=Produto • V=Separação")
+        st.info("OP repetida não bloqueia a importação. O sistema consolida a OP e considera a MAIOR Data de Separação da coluna V.")
 
-        uploaded = st.file_uploader(
-            "Selecione o Excel do cronograma",
-            type=["xlsx", "xls"],
-            key=f"cronograma_upload_{st.session_state.cronograma_upload_key}",
-        )
-
+        uploaded = st.file_uploader("Selecione o SEN-PCP-FOR-022", type=["xlsx", "xls"])
         if uploaded is not None:
             try:
-                df_raw = read_excel(uploaded)
-                st.write(f"Linhas encontradas: **{len(df_raw)}**")
-                st.dataframe(df_raw.head(8), use_container_width=True, hide_index=True)
+                base, meta = read_macro_schedule(uploaded)
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Linhas do Excel", meta["linhas_excel"])
+                c2.metric("OPs consolidadas", meta["ops_unicas"])
+                c3.metric("OPs com data", meta["ops_com_data"])
+                c4.metric("OPs sem data", meta["ops_sem_data"])
 
-                cols = list(df_raw.columns)
-                if len(cols) == 0:
-                    st.error("O arquivo não possui colunas.")
-                else:
-                    d1, d2, d3 = st.columns(3)
-                    with d1:
-                        col_op = st.selectbox(
-                            "Coluna OP",
-                            cols,
-                            index=cols.index(find_column(df_raw, ["op", "ordem de produção"]))
-                            if find_column(df_raw, ["op", "ordem de produção"]) in cols else 0,
-                        )
-                        col_psy = st.selectbox(
-                            "Coluna PSY",
-                            cols,
-                            index=cols.index(find_column(df_raw, ["psy"]))
-                            if find_column(df_raw, ["psy"]) in cols else 0,
-                        )
-                    with d2:
-                        col_cliente = st.selectbox(
-                            "Coluna Cliente",
-                            cols,
-                            index=cols.index(find_column(df_raw, ["cliente"]))
-                            if find_column(df_raw, ["cliente"]) in cols else 0,
-                        )
-                        col_produto = st.selectbox(
-                            "Coluna Produto",
-                            cols,
-                            index=cols.index(find_column(df_raw, ["produto"]))
-                            if find_column(df_raw, ["produto"]) in cols else 0,
-                        )
-                    with d3:
-                        col_data = st.selectbox(
-                            "Coluna Data de Separação",
-                            cols,
-                            index=cols.index(find_column(df_raw, ["data de separação", "data separacao", "separação"]))
-                            if find_column(df_raw, ["data de separação", "data separacao", "separação"]) in cols else 0,
-                        )
+                if meta["linhas_excel"] > meta["ops_unicas"]:
+                    st.warning(
+                        f"{meta['linhas_excel'] - meta['ops_unicas']} linha(s) repetida(s) foram consolidadas. "
+                        "Em cada OP repetida foi mantida a maior data da coluna V."
+                    )
 
-                    if st.button("Processar atualização do cronograma", type="primary"):
-                        ok, result = import_cronograma(
-                            df_raw,
-                            {
-                                "op": col_op,
-                                "psy": col_psy,
-                                "cliente": col_cliente,
-                                "produto": col_produto,
-                                "data_separacao": col_data,
-                            },
-                            origem=uploaded.name,
-                        )
-
-                        if not ok and result["tipo"] == "conflito_op":
-                            st.error(
-                                "Importação bloqueada: existem OPs com mais de uma Data de Separação no mesmo arquivo."
-                            )
-                            conflict_df = pd.DataFrame(
-                                [
-                                    {
-                                        "OP": op,
-                                        "Datas conflitantes": ", ".join(fmt_date(d) for d in dates),
-                                    }
-                                    for op, dates in result["conflitos"]
-                                ]
-                            )
-                            st.dataframe(conflict_df, use_container_width=True, hide_index=True)
-
-                        elif ok:
-                            st.success(
-                                f"Importação concluída: {result['registros']} OPs analisadas e "
-                                f"{result['ativos']} OPs com data mantidas no cronograma."
-                            )
-
-                            if result["criticos"]:
-                                st.error(
-                                    f"{len(result['criticos'])} ALTERAÇÃO(ÕES) CRÍTICA(S) detectada(s). "
-                                    "Necessária tratativa junto ao PCP."
-                                )
-                                crit_df = pd.DataFrame(result["criticos"])
-                                st.dataframe(crit_df, use_container_width=True, hide_index=True)
-
-                            if result["alteracoes"]:
-                                st.markdown("##### Alterações identificadas")
-                                st.dataframe(
-                                    pd.DataFrame(result["alteracoes"]),
-                                    use_container_width=True,
-                                    hide_index=True,
-                                )
-            except Exception as e:
-                st.exception(e)
-
-    with tab3:
-        crono = st.session_state.cronograma_master.copy()
-        if crono.empty:
-            st.info("Nenhum cronograma carregado.")
-        else:
-            pending = crono[crono["alerta_ativo"] == True].copy()
-
-            if pending.empty:
-                st.success("Não existem alertas críticos pendentes de tratativa.")
-            else:
-                st.markdown(
-                    f"""
-                    <div class="critical-box">
-                        <b>{len(pending)} ocorrência(s) crítica(s) pendente(s).</b><br>
-                        O alerta somente deixa de ficar ativo após o registro da tratativa com o PCP.
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
+                preview = base[base["data_separacao"].notna()].sort_values(["data_separacao", "op"]).head(20)
                 st.dataframe(
-                    pending[
-                        ["op", "cliente", "produto", "data_separacao",
-                         "tipo_alerta", "tratativa_pcp"]
-                    ],
+                    preview,
                     use_container_width=True,
                     hide_index=True,
-                    column_config={
-                        "op": "OP",
-                        "cliente": "Cliente",
-                        "produto": "Produto",
-                        "data_separacao": st.column_config.DateColumn(
-                            "Data Separação", format="DD/MM/YYYY"
-                        ),
-                        "tipo_alerta": "Ocorrência",
-                        "tratativa_pcp": "Tratativa",
-                    },
+                    column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
                 )
 
-                op_treat = st.selectbox("OP para tratativa", pending["op"].astype(str).tolist())
-                user_treat = st.text_input("Responsável pela tratativa", value="Operador")
-                obs_treat = st.text_area(
-                    "Descrição da tratativa",
-                    placeholder="Ex.: PCP acionado e informado sobre inclusão retroativa; separação priorizada.",
-                )
+                label = "Criar carga inicial" if not st.session_state.baseline_loaded else "Processar atualização e comparar histórico"
+                if st.button(label, type="primary"):
+                    baseline, critical, changes = import_schedule(base, meta, uploaded.name)
+                    if baseline:
+                        st.success(
+                            f"Carga inicial criada com {meta['ops_unicas']} OPs. "
+                            f"{meta['ops_com_data']} aparecem no cronograma. Nenhum alerta retroativo foi gerado."
+                        )
+                    else:
+                        st.success("Atualização processada e comparada com o histórico anterior.")
+                        if critical:
+                            st.error(f"{len(critical)} ALTERAÇÃO(ÕES) CRÍTICA(S): necessária tratativa imediata junto ao PCP.")
+                            st.dataframe(pd.DataFrame(critical), use_container_width=True, hide_index=True)
+                        if changes:
+                            st.markdown("##### Alterações encontradas")
+                            st.dataframe(pd.DataFrame(changes), use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Nenhuma alteração de cronograma encontrada.")
+            except Exception as exc:
+                st.exception(exc)
 
-                if st.button("Concluir tratativa PCP", type="primary"):
-                    if not obs_treat.strip():
-                        st.warning("Informe a tratativa realizada.")
-                    elif close_pcp_treatment(op_treat, obs_treat, user_treat or "Operador"):
-                        st.success("Tratativa concluída e registrada no histórico.")
-                        st.rerun()
-
-
-# ============================================================
-# MATERIAIS
-# ============================================================
-elif pagina == "Materiais":
-    st.markdown('<div class="section-title">Materiais</div>', unsafe_allow_html=True)
-    st.caption(
-        "Regra principal: Data CM menor ou igual a hoje + saldo em estoque maior que zero = ENTREGA PENDENTE."
-    )
-
-    tab1, tab2 = st.tabs(["Demanda por projeto", "Importar MRP Consulta"])
-
-    with tab1:
-        mats = st.session_state.materiais.copy()
-
-        if mats.empty:
-            st.info("Nenhuma base MRP carregada.")
+    with tab_pcp:
+        schedule = st.session_state.schedule
+        pending = schedule[schedule["alerta_ativo"]].copy() if not schedule.empty else pd.DataFrame()
+        if pending.empty:
+            st.success("Não existem alertas críticos pendentes de tratativa.")
         else:
-            m1, m2 = st.columns([1.2, 1])
-            with m1:
-                busca_mat = st.text_input("Buscar OP / código / descrição")
-            with m2:
-                situacoes = sorted(mats["situacao"].dropna().unique().tolist())
-                sit_filter = st.multiselect("Situação", situacoes, default=situacoes)
-
-            filtered = mats[mats["situacao"].isin(sit_filter)].copy()
-
-            if busca_mat.strip():
-                term = busca_mat.strip().lower()
-                mask = (
-                    filtered["op"].astype(str).str.lower().str.contains(term, na=False)
-                    | filtered["codigo"].astype(str).str.lower().str.contains(term, na=False)
-                    | filtered["descricao"].astype(str).str.lower().str.contains(term, na=False)
-                )
-                filtered = filtered[mask]
-
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Itens", len(filtered))
-            c2.metric("Entrega pendente", int((filtered["situacao"] == "ENTREGA PENDENTE").sum()))
-            c3.metric("Sem estoque", int((filtered["situacao"] == "SEM ESTOQUE").sum()))
-            c4.metric("Aguardando data", int((filtered["situacao"] == "AGUARDANDO DATA").sum()))
-
+            st.markdown(f'<div class="critical"><b>{len(pending)} ocorrência(s) crítica(s) pendente(s).</b><br>O alerta só é encerrado após registrar a tratativa com o PCP.</div>', unsafe_allow_html=True)
             st.dataframe(
-                filtered,
+                pending[["op", "cliente", "produto", "data_separacao", "tipo_alerta", "tratativa_pcp"]],
                 use_container_width=True,
                 hide_index=True,
-                column_config={
-                    "op": "OP / Projeto",
-                    "codigo": "Código",
-                    "descricao": "Descrição",
-                    "quantidade_demanda": st.column_config.NumberColumn("Qtd. Demanda"),
-                    "data_cm": st.column_config.DateColumn("Data CM", format="DD/MM/YYYY"),
-                    "saldo_estoque": st.column_config.NumberColumn("Saldo Estoque"),
-                    "situacao": "Validação",
-                },
+                column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
             )
-
-    with tab2:
-        st.markdown("#### Importação da MRP Consulta")
-
-        uploaded_mrp = st.file_uploader(
-            "Selecione a planilha MRP Consulta",
-            type=["xlsx", "xls"],
-            key=f"materiais_upload_{st.session_state.materiais_upload_key}",
-        )
-
-        if uploaded_mrp is not None:
-            try:
-                df_mrp = read_excel(uploaded_mrp)
-                st.write(f"Linhas encontradas: **{len(df_mrp)}**")
-                st.dataframe(df_mrp.head(8), use_container_width=True, hide_index=True)
-
-                cols = list(df_mrp.columns)
-
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    m_op = st.selectbox(
-                        "Coluna OP / Projeto",
-                        cols,
-                        index=cols.index(find_column(df_mrp, ["op", "projeto", "ordem de produção"]))
-                        if find_column(df_mrp, ["op", "projeto", "ordem de produção"]) in cols else 0,
-                    )
-                    m_cod = st.selectbox(
-                        "Coluna Código",
-                        cols,
-                        index=cols.index(find_column(df_mrp, ["código", "codigo", "cod material", "material"]))
-                        if find_column(df_mrp, ["código", "codigo", "cod material", "material"]) in cols else 0,
-                    )
-                with c2:
-                    m_desc = st.selectbox(
-                        "Coluna Descrição",
-                        cols,
-                        index=cols.index(find_column(df_mrp, ["descrição", "descricao"]))
-                        if find_column(df_mrp, ["descrição", "descricao"]) in cols else 0,
-                    )
-                    m_qtd = st.selectbox(
-                        "Coluna Quantidade de Demanda",
-                        cols,
-                        index=cols.index(find_column(df_mrp, ["quantidade", "qtd", "demanda"]))
-                        if find_column(df_mrp, ["quantidade", "qtd", "demanda"]) in cols else 0,
-                    )
-                with c3:
-                    m_cm = st.selectbox(
-                        "Coluna Data CM",
-                        cols,
-                        index=cols.index(find_column(df_mrp, ["data cm", "dt cm", "cm"]))
-                        if find_column(df_mrp, ["data cm", "dt cm", "cm"]) in cols else 0,
-                    )
-                    m_saldo = st.selectbox(
-                        "Coluna Saldo em Estoque",
-                        cols,
-                        index=cols.index(find_column(df_mrp, ["saldo em estoque", "saldo estoque", "estoque", "saldo"]))
-                        if find_column(df_mrp, ["saldo em estoque", "saldo estoque", "estoque", "saldo"]) in cols else 0,
-                    )
-
-                if st.button("Processar MRP Consulta", type="primary"):
-                    result = import_materiais(
-                        df_mrp,
-                        {
-                            "op": m_op,
-                            "codigo": m_cod,
-                            "descricao": m_desc,
-                            "quantidade_demanda": m_qtd,
-                            "data_cm": m_cm,
-                            "saldo_estoque": m_saldo,
-                        },
-                        origem=uploaded_mrp.name,
-                    )
-                    st.success(
-                        f"{result['registros']} itens processados. "
-                        f"{result['entrega_pendente']} com ENTREGA PENDENTE."
-                    )
+            op_pcp = st.selectbox("OP para tratativa", pending["op"].astype(str).tolist())
+            user_pcp = st.text_input("Responsável pela tratativa", value="Operador")
+            detail_pcp = st.text_area("Descrição da tratativa realizada")
+            if st.button("Concluir tratativa PCP", type="primary"):
+                if not detail_pcp.strip():
+                    st.warning("Informe a tratativa realizada.")
+                else:
+                    close_treatment(op_pcp, detail_pcp.strip(), user_pcp)
+                    st.success("Tratativa registrada e alerta encerrado.")
                     st.rerun()
 
-            except Exception as e:
-                st.exception(e)
+
+elif page == "Materiais":
+    tab_list, tab_import = st.tabs(["Demanda por projeto", "Importar MRP Consulta"])
+    with tab_list:
+        materials = st.session_state.materials.copy()
+        if materials.empty:
+            st.info("Nenhuma base MRP carregada.")
+        else:
+            c1, c2, c3 = st.columns([1.4, 1, 1])
+            search = c1.text_input("Buscar OP / código / descrição")
+            options = sorted(materials["situacao"].unique().tolist())
+            selected = c2.multiselect("Situação", options, default=options)
+            only_pending = c3.checkbox("Somente entrega pendente")
+            view = materials[materials["situacao"].isin(selected)].copy()
+            if only_pending:
+                view = view[view["situacao"] == "ENTREGA PENDENTE"]
+            if search.strip():
+                term = search.strip().lower()
+                mask = (
+                    view["op"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["codigo"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["descricao"].astype(str).str.lower().str.contains(term, na=False)
+                )
+                view = view[mask]
+            st.dataframe(
+                view,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"data_cm": st.column_config.DateColumn("Data CM", format="DD/MM/YYYY")},
+            )
+
+    with tab_import:
+        st.caption("Regra atual: Data CM <= hoje e Saldo em Estoque > 0 = ENTREGA PENDENTE.")
+        uploaded_mrp = st.file_uploader("Selecione a MRP Consulta", type=["xlsx", "xls"], key="mrp")
+        if uploaded_mrp is not None:
+            raw = pd.read_excel(uploaded_mrp)
+            st.dataframe(raw.head(8), use_container_width=True, hide_index=True)
+            cols = list(raw.columns)
+            if cols:
+                c1, c2, c3 = st.columns(3)
+                op_col = c1.selectbox("OP / Projeto", cols, index=cols.index(find_col(raw, ["op", "projeto", "ordem de produção"])) if find_col(raw, ["op", "projeto", "ordem de produção"]) in cols else 0)
+                code_col = c1.selectbox("Código", cols, index=cols.index(find_col(raw, ["código", "codigo", "cod material"])) if find_col(raw, ["código", "codigo", "cod material"]) in cols else 0)
+                desc_col = c2.selectbox("Descrição", cols, index=cols.index(find_col(raw, ["descrição", "descricao"])) if find_col(raw, ["descrição", "descricao"]) in cols else 0)
+                qty_col = c2.selectbox("Quantidade demanda", cols, index=cols.index(find_col(raw, ["quantidade", "qtd", "demanda"])) if find_col(raw, ["quantidade", "qtd", "demanda"]) in cols else 0)
+                cm_col = c3.selectbox("Data CM", cols, index=cols.index(find_col(raw, ["data cm", "dt cm"])) if find_col(raw, ["data cm", "dt cm"]) in cols else 0)
+                saldo_col = c3.selectbox("Saldo em estoque", cols, index=cols.index(find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"])) if find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"]) in cols else 0)
+                if st.button("Processar MRP Consulta", type="primary"):
+                    import_materials(raw, {"op": op_col, "codigo": code_col, "descricao": desc_col, "quantidade": qty_col, "data_cm": cm_col, "saldo": saldo_col})
+                    st.success("MRP Consulta processada.")
+                    st.rerun()
 
 
-# ============================================================
-# HISTÓRICO
-# ============================================================
-elif pagina == "Histórico":
-    st.markdown('<div class="section-title">Histórico e rastreabilidade</div>', unsafe_allow_html=True)
-    st.caption(
-        "Registra alterações de cronograma, alertas críticos, status, comentários e tratativas."
-    )
-
-    hist = pd.DataFrame(st.session_state.historico)
-
-    if hist.empty:
+elif page == "Histórico":
+    history = pd.DataFrame(st.session_state.history)
+    if history.empty:
         st.info("Ainda não existem eventos registrados.")
     else:
-        h1, h2 = st.columns([1.2, 1])
-        with h1:
-            busca_hist = st.text_input("Buscar OP / evento / detalhe")
-        with h2:
-            eventos = sorted(hist["evento"].dropna().unique().tolist())
-            event_filter = st.multiselect("Tipo de evento", eventos, default=eventos)
-
-        filtered = hist[hist["evento"].isin(event_filter)].copy()
-
-        if busca_hist.strip():
-            term = busca_hist.strip().lower()
-            mask = (
-                filtered["op"].astype(str).str.lower().str.contains(term, na=False)
-                | filtered["evento"].astype(str).str.lower().str.contains(term, na=False)
-                | filtered["detalhe"].astype(str).str.lower().str.contains(term, na=False)
-            )
-            filtered = filtered[mask]
-
-        # Mais recentes primeiro
-        filtered = filtered.iloc[::-1].reset_index(drop=True)
-
-        st.dataframe(
-            filtered,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "data_hora": "Data/Hora",
-                "op": "OP",
-                "evento": "Evento",
-                "campo": "Campo",
-                "anterior": "Anterior",
-                "novo": "Novo",
-                "usuario": "Responsável",
-                "detalhe": "Detalhe",
-            },
-        )
+        c1, c2 = st.columns([1.5, 1])
+        search = c1.text_input("Buscar OP / evento / detalhe")
+        events = sorted(history["evento"].unique().tolist())
+        selected = c2.multiselect("Evento", events, default=events)
+        view = history[history["evento"].isin(selected)].copy()
+        if search.strip():
+            term = search.strip().lower()
+            view = view[
+                view["op"].astype(str).str.lower().str.contains(term, na=False)
+                | view["evento"].astype(str).str.lower().str.contains(term, na=False)
+                | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
+            ]
+        st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
 
     st.divider()
-    st.markdown("#### Importações realizadas")
-    imports = pd.DataFrame(st.session_state.importacoes)
+    st.markdown("#### Importações")
+    imports = pd.DataFrame(st.session_state.imports)
     if imports.empty:
-        st.caption("Nenhuma importação registrada nesta sessão.")
+        st.caption("Nenhuma importação nesta sessão.")
     else:
         st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
 
-    st.divider()
-    st.info(
-        "Protótipo: os dados ficam em memória durante a sessão. "
-        "Depois da validação das regras e do layout, a persistência deve ser ligada ao Supabase."
-    )
+    st.info("Nesta fase de validação os dados ainda ficam na sessão do Streamlit. Depois conectaremos o histórico ao Supabase.")
