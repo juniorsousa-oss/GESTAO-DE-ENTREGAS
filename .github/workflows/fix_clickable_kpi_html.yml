@@ -1,0 +1,30 @@
+name: Fix clickable KPI HTML
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix_clickable_kpi_html.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply fix
+        run: python scripts/fix_clickable_kpi_html.py
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_ui_legacy.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Fix clickable KPI HTML rendering"
+          git push
