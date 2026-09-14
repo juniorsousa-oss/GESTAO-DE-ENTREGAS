@@ -302,7 +302,16 @@ def _metric_ui(self, label, value, *args, **kwargs):
     delta = kwargs.get("delta")
     delta_html = f'<div class="kpi-delta">{escape(str(delta))}</div>' if delta not in (None, "") else ""
 
-    html = f'''
+    filter_slugs = {
+        "Projetos": "all",
+        "Pendentes": "pending",
+        "Separados": "separated",
+        "Entregues": "delivered",
+        "Alertas críticos": "alerts",
+        "Materiais p/ entrega": "materials",
+    }
+
+    card_html = f'''
     <div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};">
         <div class="kpi-header">
             <span class="kpi-dot"></span>
@@ -312,6 +321,29 @@ def _metric_ui(self, label, value, *args, **kwargs):
         {delta_html}
     </div>
     '''
+
+    if label_text in filter_slugs:
+        slug = filter_slugs[label_text]
+        current = st.query_params.get("dash", "all")
+        if isinstance(current, list):
+            current = current[0] if current else "all"
+        selected_style = (
+            f"box-shadow:0 0 0 2px {accent}, 0 8px 22px rgba(15,23,42,.085);"
+            if str(current) == slug else ""
+        )
+        card_html = card_html.replace(
+            'class="kpi-card" style="',
+            f'class="kpi-card" style="cursor:pointer;{selected_style}',
+            1,
+        )
+        html = (
+            f'<a href="?dash={slug}" target="_self" '
+            'style="display:block;text-decoration:none!important;color:inherit!important;">'
+            f'{card_html}</a>'
+        )
+    else:
+        html = card_html
+
     return self.markdown(html, unsafe_allow_html=True)
 
 
