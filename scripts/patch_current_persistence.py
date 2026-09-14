@@ -3,25 +3,15 @@ from pathlib import Path
 path = Path('app_main.py')
 text = path.read_text(encoding='utf-8')
 
-old = '''                label = "Criar carga inicial" if not st.session_state.baseline_loaded else "Processar atualização e comparar histórico"
-                if st.button(label, type="primary"):
-                    baseline, critical, changes = import_schedule(base, meta, uploaded.name)
-                    if baseline:
-                        st.success(
-                            f"Carga inicial criada com {meta['ops_unicas']} OPs. "
-                            f"{meta['ops_com_data']} aparecem no cronograma. Nenhum alerta retroativo foi gerado."
-                        )
-                    else:
-                        st.success("Atualização processada e comparada com o histórico anterior.")
-                        if critical:
-                            st.error(f"{len(critical)} ALTERAÇÃO(ÕES) CRÍTICA(S): necessária tratativa imediata junto ao PCP.")
-                            st.dataframe(pd.DataFrame(critical), use_container_width=True, hide_index=True)
-                        if changes:
-                            st.markdown("##### Alterações encontradas")
-                            st.dataframe(pd.DataFrame(changes), use_container_width=True, hide_index=True)
-                        else:
-                            st.info("Nenhuma alteração de cronograma encontrada.")
-'''
+start_marker = '                label = "Criar carga inicial" if not st.session_state.baseline_loaded else "Processar atualização e comparar histórico"\n'
+end_marker = '            except Exception as exc:\n                st.exception(exc)\n'
+
+start = text.find(start_marker)
+if start < 0:
+    raise SystemExit('Início da carga normal não encontrado.')
+end = text.find(end_marker, start)
+if end < 0:
+    raise SystemExit('Fim da carga normal não encontrado.')
 
 new = '''                st.caption(
                     f"A carga será salva no banco com data de referência {today().strftime('%d/%m/%Y')}. "
@@ -84,11 +74,8 @@ new = '''                st.caption(
                             st.rerun()
 '''
 
-if old not in text:
-    raise SystemExit('Trecho da carga normal não encontrado.')
-text = text.replace(old, new, 1)
+text = text[:start] + new + text[end:]
 
-# Exibe a confirmação após o rerun, sem depender do arquivo ainda estar selecionado.
 anchor = '''    with tab_import:
         st.markdown("#### Importação do Cronograma de Montagem")
 '''
@@ -98,9 +85,10 @@ replacement = '''    with tab_import:
         if current_load_success:
             st.success(current_load_success)
 '''
-if anchor not in text:
-    raise SystemExit('Âncora da aba de importação não encontrada.')
-text = text.replace(anchor, replacement, 1)
+if '_current_load_success' not in text:
+    if anchor not in text:
+        raise SystemExit('Âncora da aba de importação não encontrada.')
+    text = text.replace(anchor, replacement, 1)
 
 text = text.replace('st.caption("APP core build 11")', 'st.caption("APP core build 12")', 1)
 
