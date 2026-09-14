@@ -196,10 +196,9 @@ _replace_once(
 "atualização visual após gravação",
 )
 
-# O app principal recebe datas vindas do Supabase como objetos pandas. Quando
-# uma OP não possui Data de Separação, o pandas pode representar isso como NaT.
-# Antes de executar o app, reforçamos a classificação para transformar qualquer
-# valor nulo (None/NaT/NaN) em None, evitando comparações inválidas com date.
+# Corrige o caso em que uma OP sem Data de Separação volta do pandas como NaT.
+# A função principal passa a converter qualquer data nula para None antes de
+# comparar com datetime.date.
 _replace_once(
 '''_app_path = Path(__file__).with_name("app_main.py")
 exec(compile(_app_path.read_text(encoding="utf-8"), str(_app_path), "exec"), globals())
@@ -207,8 +206,8 @@ exec(compile(_app_path.read_text(encoding="utf-8"), str(_app_path), "exec"), glo
 '''_app_path = Path(__file__).with_name("app_main.py")
 _app_source = _app_path.read_text(encoding="utf-8")
 _app_source = _app_source.replace(
-    '''def classify_change(old_date, new_date, existed):\n    h = today()\n''',
-    '''def classify_change(old_date, new_date, existed):\n    if old_date is None or pd.isna(old_date):\n        old_date = None\n    if new_date is None or pd.isna(new_date):\n        new_date = None\n    h = today()\n''',
+    "def classify_change(old_date, new_date, existed):\\n    h = today()\\n",
+    "def classify_change(old_date, new_date, existed):\\n    if old_date is None or pd.isna(old_date):\\n        old_date = None\\n    if new_date is None or pd.isna(new_date):\\n        new_date = None\\n    h = today()\\n",
     1,
 )
 exec(compile(_app_source, str(_app_path), "exec"), globals())
