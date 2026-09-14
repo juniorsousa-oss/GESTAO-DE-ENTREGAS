@@ -19,7 +19,7 @@ _replace_once(
             return True
 
         full = pd.DataFrame(rows)
-        for col in ["data_separacao", "ultima_alteracao_cronograma"]:
+        for col in ["data_separacao", "ultima_alteracao_cronograma", "ultima_alteracao_equipe"]:
             if col in full.columns:
                 full[col] = pd.to_datetime(full[col], errors="coerce").dt.date
 ''',

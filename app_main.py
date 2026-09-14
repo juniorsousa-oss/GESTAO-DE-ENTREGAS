@@ -416,7 +416,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 12")
+    st.caption("APP core build 13")
 
 
 if page == "Dashboard":
@@ -432,6 +432,22 @@ if page == "Dashboard":
     c5.metric("Alertas críticos", alerts)
     c6.metric("Materiais p/ entrega", int((materials["situacao"] == "ENTREGA PENDENTE").sum()) if not materials.empty else 0)
 
+    last_crono = None
+    if not schedule.empty and "ultima_alteracao_cronograma" in schedule.columns:
+        vals = pd.to_datetime(schedule["ultima_alteracao_cronograma"], errors="coerce").dropna()
+        if not vals.empty:
+            last_crono = vals.max().date()
+
+    last_team = None
+    if not schedule.empty and "ultima_alteracao_equipe" in schedule.columns:
+        vals = pd.to_datetime(schedule["ultima_alteracao_equipe"], errors="coerce").dropna()
+        if not vals.empty:
+            last_team = vals.max().date()
+
+    d1, d2 = st.columns(2)
+    d1.metric("Última alteração do cronograma", fmt_date(last_crono) if last_crono else "Sem registro")
+    d2.metric("Última alteração da equipe de separação", fmt_date(last_team) if last_team else "Sem registro")
+
     if alerts:
         st.markdown(f'<div class="critical"><b>{alerts} projeto(s) com tratativa PCP pendente.</b></div>', unsafe_allow_html=True)
 
@@ -439,8 +455,14 @@ if page == "Dashboard":
     if schedule.empty:
         st.info("Carregue o cronograma para iniciar.")
     else:
+        dashboard_cols = [
+            c for c in [
+                "op", "psy", "cliente", "produto", "data_separacao", "status",
+                "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "tipo_alerta"
+            ] if c in schedule.columns
+        ]
         st.dataframe(
-            schedule[["op", "psy", "cliente", "produto", "data_separacao", "status", "tipo_alerta"]].head(20),
+            schedule[dashboard_cols].head(20),
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -450,6 +472,8 @@ if page == "Dashboard":
                 "produto": "Produto",
                 "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                 "status": "Status",
+                "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
+                "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
                 "tipo_alerta": "Alerta",
             },
         )
@@ -485,10 +509,14 @@ elif page == "Cronograma":
 
             st.caption("Marque uma ou mais OPs na coluna Selecionar. Uma OP abre as ações individuais; duas ou mais habilitam a ação em lote.")
 
-            editor_view = view[[
-                "op", "psy", "cliente", "produto", "data_separacao", "status",
-                "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
-            ]].copy().reset_index(drop=True)
+            editor_columns = [
+                c for c in [
+                    "op", "psy", "cliente", "produto", "data_separacao", "status",
+                    "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
+                    "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
+                ] if c in view.columns
+            ]
+            editor_view = view[editor_columns].copy().reset_index(drop=True)
             editor_view.insert(0, "Selecionar", False)
 
             edited_view = st.data_editor(
@@ -509,6 +537,8 @@ elif page == "Cronograma":
                     "produto": "Produto",
                     "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                     "status": "Status",
+                    "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
+                    "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
                     "tipo_alerta": "Alerta",
                     "tratativa_pcp": "Tratativa PCP",
                     "ultimo_comentario": "Último comentário",
@@ -588,7 +618,9 @@ elif page == "Cronograma":
                       <div class="project-title">OP {op_selected}</div>
                       <div class="project-meta">
                         PSY: {project['psy']} &nbsp; • &nbsp; Cliente: {project['cliente']}<br>
-                        Produto: {project['produto']} &nbsp; • &nbsp; Data de Separação: {fmt_date(project['data_separacao'])}
+                        Produto: {project['produto']} &nbsp; • &nbsp; Data de Separação: {fmt_date(project['data_separacao'])}<br>
+                        Última alt. cronograma: {fmt_date(project.get('ultima_alteracao_cronograma'))} &nbsp; • &nbsp;
+                        Última alt. separação: {fmt_date(project.get('ultima_alteracao_equipe'))}
                       </div>
                     </div>
                     """,
@@ -626,28 +658,29 @@ elif page == "Cronograma":
 
                 if do_status or do_comment:
                     if st.button("Salvar ações do projeto", type="primary", key=f"salvar_acoes_{op_selected}"):
-                        messages = []
-                        errors = []
-
-                        if do_status:
-                            changed, msg = change_status(op_selected, chosen_status, responsible)
-                            if changed:
-                                messages.append(msg)
-                            else:
-                                errors.append(msg)
-
-                        if do_comment:
-                            if add_comment(op_selected, comment_text, responsible):
-                                messages.append("Comentário registrado.")
-                            else:
-                                errors.append("Informe um comentário antes de salvar.")
-
-                        if messages:
-                            st.success(" ".join(messages))
-                        if errors:
-                            st.warning(" ".join(errors))
-                        if messages:
-                            st.rerun()
+                        if do_comment and not comment_text.strip():
+                            st.warning("Informe um comentário antes de salvar.")
+                        elif "_supabase_api" not in globals():
+                            st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
+                        else:
+                            try:
+                                _supabase_api(
+                                    "team_action",
+                                    {
+                                        "op": op_selected,
+                                        "status": chosen_status if do_status else None,
+                                        "comentario": comment_text.strip() if do_comment else None,
+                                        "responsavel": responsible or "Operador",
+                                    },
+                                    timeout=45,
+                                )
+                                st.session_state["_entrega_supabase_sync"] = False
+                                if "_sync_current_from_supabase" in globals():
+                                    _sync_current_from_supabase(force=True)
+                                st.success("Ação da equipe de separação registrada.")
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Não foi possível salvar a ação: {exc}")
                 else:
                     st.info("Marque uma das opções acima para alterar o projeto selecionado.")
 
