@@ -32,7 +32,6 @@ def _cronograma_table(self, data=None, *args, **kwargs):
         default=False,
     )
 
-    # O data_editor não recebe os parâmetros de evento do st.dataframe.
     editor_kwargs = {
         "use_container_width": kwargs.get("use_container_width", True),
         "hide_index": kwargs.get("hide_index", True),
@@ -47,8 +46,8 @@ def _cronograma_table(self, data=None, *args, **kwargs):
     selected_rows = edited.index[edited["Selecionar"].fillna(False).astype(bool)].tolist()
     st.session_state["_cronograma_bulk_rows"] = selected_rows
 
-    # Para uma única OP preservamos o painel individual existente.
-    # Para várias OPs o painel individual é ocultado e usamos a ação em lote.
+    # Uma única OP continua abrindo o painel individual existente.
+    # Com duas ou mais, o painel individual é ocultado e entra a ação em lote.
     returned_rows = selected_rows if len(selected_rows) == 1 else []
     return SimpleNamespace(selection=SimpleNamespace(rows=returned_rows))
 
@@ -62,7 +61,7 @@ def _caption_build(self, body, *args, **kwargs):
 DeltaGenerator.dataframe = _cronograma_table
 DeltaGenerator.caption = _caption_build
 
-# Executa integralmente a versão anterior em toda renderização do Streamlit.
+# Executa integralmente a versão funcional anterior.
 _runtime_path = Path(__file__).with_name("streamlit_runtime_v8.py")
 app = runpy.run_path(str(_runtime_path))
 
@@ -94,8 +93,7 @@ if app.get("page") == "Cronograma":
                         c for c in ["op", "cliente", "produto", "data_separacao", "status"]
                         if c in view.columns
                     ]
-                    _native_dataframe(
-                        st._main,
+                    st.dataframe(
                         view.iloc[valid_rows][cols],
                         use_container_width=True,
                         hide_index=True,
@@ -156,7 +154,6 @@ if app.get("page") == "Cronograma":
 
                         st.session_state["_bulk_status_success"] = msg
                         st.session_state["_cronograma_bulk_rows"] = []
-                        # Limpa as marcações do editor após a atualização.
                         st.session_state.pop("cronograma_editor_lote", None)
                         st.rerun()
                     except Exception as exc:
