@@ -32,6 +32,10 @@ st.markdown(
       .app-sub {font-size:.92rem;color:#6b7280;margin-bottom:1rem;}
       .critical {border:1px solid #ef4444;border-left:6px solid #ef4444;
         border-radius:8px;padding:12px 14px;background:rgba(239,68,68,.06);margin:8px 0 14px;}
+      .project-card {border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;
+        margin-top:12px;background:rgba(249,250,251,.72);}
+      .project-title {font-size:1.08rem;font-weight:750;margin-bottom:.25rem;}
+      .project-meta {color:#6b7280;font-size:.88rem;margin-bottom:.6rem;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -127,9 +131,11 @@ def read_macro_schedule(uploaded_file):
 
     rows = []
     repeated_ops = 0
+    repeated_lines = 0
     for op, group in base.groupby("op", sort=False):
         if len(group) > 1:
             repeated_ops += 1
+            repeated_lines += len(group) - 1
         dated = group[group["data_separacao"].notna()]
         if dated.empty:
             row = group.iloc[0].copy()
@@ -146,6 +152,7 @@ def read_macro_schedule(uploaded_file):
         "ops_com_data": int(consolidated["data_separacao"].notna().sum()),
         "ops_sem_data": int(consolidated["data_separacao"].isna().sum()),
         "ops_repetidas": repeated_ops,
+        "linhas_consolidadas": repeated_lines,
     }
     return consolidated.reset_index(drop=True), metadata
 
@@ -292,27 +299,28 @@ def import_schedule(base, metadata, source_name):
     return baseline, critical, changes
 
 
-def save_status(edited):
+def change_status(op, new_status, user="Operador"):
+    op = str(op)
     master = st.session_state.schedule.copy()
-    changed = 0
-    for _, row in edited.iterrows():
-        op = str(row["op"])
-        new_status = row["status"]
-        idxs = master.index[master["op"].astype(str) == op].tolist()
-        if not idxs:
-            continue
-        idx = idxs[0]
-        old_status = master.at[idx, "status"]
-        if new_status != old_status:
-            master.at[idx, "status"] = new_status
-            master.at[idx, "ultima_atualizacao"] = now().strftime("%d/%m/%Y %H:%M")
-            state = st.session_state.ops_state.get(op, default_state())
-            state["status"] = new_status
-            st.session_state.ops_state[op] = state
-            add_history(op, "Alteração de status", "Status", old_status, new_status, user="Operador")
-            changed += 1
+    idxs = master.index[master["op"].astype(str) == op].tolist()
+    if not idxs:
+        return False, "OP não encontrada."
+
+    idx = idxs[0]
+    old_status = master.at[idx, "status"]
+    if new_status == old_status:
+        return False, "O projeto já está com esse status."
+
+    master.at[idx, "status"] = new_status
+    master.at[idx, "ultima_atualizacao"] = now().strftime("%d/%m/%Y %H:%M")
     st.session_state.schedule = master
-    return changed
+
+    state = st.session_state.ops_state.get(op, default_state())
+    state["status"] = new_status
+    st.session_state.ops_state[op] = state
+
+    add_history(op, "Alteração de status", "Status", old_status, new_status, user=user or "Operador")
+    return True, f"Status alterado de {old_status} para {new_status}."
 
 
 def add_comment(op, comment, user):
@@ -333,7 +341,9 @@ def add_comment(op, comment, user):
     master = st.session_state.schedule.copy()
     idxs = master.index[master["op"].astype(str) == str(op)].tolist()
     if idxs:
-        master.at[idxs[0], "ultimo_comentario"] = comment
+        idx = idxs[0]
+        master.at[idx, "ultimo_comentario"] = comment
+        master.at[idx, "ultima_atualizacao"] = now().strftime("%d/%m/%Y %H:%M")
         st.session_state.schedule = master
     add_history(op, "Comentário registrado", "Comentário", "", comment, user=user or "Operador")
     return True
@@ -432,7 +442,15 @@ if page == "Dashboard":
             schedule[["op", "psy", "cliente", "produto", "data_separacao", "status", "tipo_alerta"]].head(20),
             use_container_width=True,
             hide_index=True,
-            column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
+            column_config={
+                "op": "OP",
+                "psy": "PSY",
+                "cliente": "Cliente",
+                "produto": "Produto",
+                "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                "status": "Status",
+                "tipo_alerta": "Alerta",
+            },
         )
 
 
@@ -462,48 +480,111 @@ elif page == "Cronograma":
             if only_alerts:
                 view = view[view["alerta_ativo"]]
 
-            view = view.sort_values(["data_separacao", "op"])
-            edited = st.data_editor(
+            view = view.sort_values(["data_separacao", "op"]).reset_index(drop=True)
+
+            st.caption("Clique em uma linha/OP para abrir as ações do projeto.")
+            table_event = st.dataframe(
                 view[["op", "psy", "cliente", "produto", "data_separacao", "status", "tipo_alerta", "tratativa_pcp", "ultimo_comentario"]],
                 use_container_width=True,
                 hide_index=True,
-                disabled=["op", "psy", "cliente", "produto", "data_separacao", "tipo_alerta", "tratativa_pcp", "ultimo_comentario"],
+                on_select="rerun",
+                selection_mode="single-row",
+                key="cronograma_selecao",
                 column_config={
                     "op": "OP",
                     "psy": "PSY",
                     "cliente": "Cliente",
                     "produto": "Produto",
                     "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
-                    "status": st.column_config.SelectboxColumn("Status", options=STATUS, required=True),
+                    "status": "Status",
                     "tipo_alerta": "Alerta",
                     "tratativa_pcp": "Tratativa PCP",
                     "ultimo_comentario": "Último comentário",
                 },
             )
-            if st.button("Salvar alterações de status", type="primary"):
-                count = save_status(edited)
-                st.success(f"{count} alteração(ões) de status salva(s).") if count else st.info("Nenhum status foi alterado.")
-                st.rerun()
 
-            st.divider()
-            st.markdown("#### Comentários do projeto")
-            op_options = view["op"].astype(str).tolist()
-            if op_options:
-                c1, c2 = st.columns([1, 3])
-                op_comment = c1.selectbox("OP", op_options)
-                user_comment = c1.text_input("Responsável", value="Operador")
-                comment = c2.text_area("Comentário", height=95)
-                if st.button("Registrar comentário"):
-                    if add_comment(op_comment, comment, user_comment):
-                        st.success("Comentário registrado.")
-                        st.rerun()
-                    st.warning("Informe um comentário.")
+            selected_rows = table_event.selection.rows if table_event and hasattr(table_event, "selection") else []
+
+            if selected_rows:
+                selected_pos = selected_rows[0]
+                project = view.iloc[selected_pos]
+                op_selected = str(project["op"])
+
+                st.markdown(
+                    f"""
+                    <div class="project-card">
+                      <div class="project-title">OP {op_selected}</div>
+                      <div class="project-meta">
+                        PSY: {project['psy']} &nbsp; • &nbsp; Cliente: {project['cliente']}<br>
+                        Produto: {project['produto']} &nbsp; • &nbsp; Data de Separação: {fmt_date(project['data_separacao'])}
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                a1, a2 = st.columns(2)
+                do_status = a1.checkbox("Alterar status", key=f"chk_status_{op_selected}")
+                do_comment = a2.checkbox("Adicionar comentário", key=f"chk_comment_{op_selected}")
+
+                responsible = st.text_input(
+                    "Responsável",
+                    value="Operador",
+                    key=f"responsavel_{op_selected}",
+                )
+
+                chosen_status = project["status"]
+                comment_text = ""
+
+                if do_status:
+                    chosen_status = st.selectbox(
+                        "Novo status",
+                        STATUS,
+                        index=STATUS.index(project["status"]) if project["status"] in STATUS else 0,
+                        key=f"novo_status_{op_selected}",
+                    )
+
+                if do_comment:
+                    comment_text = st.text_area(
+                        "Comentário",
+                        placeholder="Registre a situação, pendência ou informação relevante do projeto.",
+                        height=100,
+                        key=f"novo_comentario_{op_selected}",
+                    )
+
+                if do_status or do_comment:
+                    if st.button("Salvar ações do projeto", type="primary", key=f"salvar_acoes_{op_selected}"):
+                        messages = []
+                        errors = []
+
+                        if do_status:
+                            changed, msg = change_status(op_selected, chosen_status, responsible)
+                            if changed:
+                                messages.append(msg)
+                            else:
+                                errors.append(msg)
+
+                        if do_comment:
+                            if add_comment(op_selected, comment_text, responsible):
+                                messages.append("Comentário registrado.")
+                            else:
+                                errors.append("Informe um comentário antes de salvar.")
+
+                        if messages:
+                            st.success(" ".join(messages))
+                        if errors:
+                            st.warning(" ".join(errors))
+                        if messages:
+                            st.rerun()
+                else:
+                    st.info("Marque uma das opções acima para alterar o projeto selecionado.")
 
                 comments = pd.DataFrame(st.session_state.comments)
                 if not comments.empty:
-                    comments = comments[comments["op"].astype(str) == op_comment]
-                    if not comments.empty:
-                        st.dataframe(comments.iloc[::-1], use_container_width=True, hide_index=True)
+                    project_comments = comments[comments["op"].astype(str) == op_selected]
+                    if not project_comments.empty:
+                        st.markdown("##### Comentários da OP")
+                        st.dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
 
     with tab_import:
         st.markdown("#### Importação do Cronograma de Montagem")
@@ -520,9 +601,9 @@ elif page == "Cronograma":
                 c3.metric("OPs com data", meta["ops_com_data"])
                 c4.metric("OPs sem data", meta["ops_sem_data"])
 
-                if meta["linhas_excel"] > meta["ops_unicas"]:
+                if meta["linhas_consolidadas"] > 0:
                     st.warning(
-                        f"{meta['linhas_excel'] - meta['ops_unicas']} linha(s) repetida(s) foram consolidadas. "
+                        f"{meta['linhas_consolidadas']} linha(s) repetida(s) foram consolidadas. "
                         "Em cada OP repetida foi mantida a maior data da coluna V."
                     )
 
@@ -603,59 +684,92 @@ elif page == "Materiais":
                     | view["descricao"].astype(str).str.lower().str.contains(term, na=False)
                 )
                 view = view[mask]
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Itens", len(view))
+            m2.metric("Entrega pendente", int((view["situacao"] == "ENTREGA PENDENTE").sum()))
+            m3.metric("Sem estoque", int((view["situacao"] == "SEM ESTOQUE").sum()))
+            m4.metric("Aguardando data", int((view["situacao"] == "AGUARDANDO DATA").sum()))
+
             st.dataframe(
                 view,
                 use_container_width=True,
                 hide_index=True,
-                column_config={"data_cm": st.column_config.DateColumn("Data CM", format="DD/MM/YYYY")},
+                column_config={
+                    "op": "OP / Projeto",
+                    "codigo": "Código",
+                    "descricao": "Descrição",
+                    "quantidade_demanda": st.column_config.NumberColumn("Qtd. Demanda"),
+                    "data_cm": st.column_config.DateColumn("Data CM", format="DD/MM/YYYY"),
+                    "saldo_estoque": st.column_config.NumberColumn("Saldo Estoque"),
+                    "situacao": "Validação",
+                },
             )
 
     with tab_import:
-        st.caption("Regra atual: Data CM <= hoje e Saldo em Estoque > 0 = ENTREGA PENDENTE.")
-        uploaded_mrp = st.file_uploader("Selecione a MRP Consulta", type=["xlsx", "xls"], key="mrp")
+        st.markdown("#### Importar MRP Consulta")
+        uploaded_mrp = st.file_uploader("Selecione a planilha MRP Consulta", type=["xlsx", "xls"])
         if uploaded_mrp is not None:
-            raw = pd.read_excel(uploaded_mrp)
-            st.dataframe(raw.head(8), use_container_width=True, hide_index=True)
-            cols = list(raw.columns)
-            if cols:
+            try:
+                raw = pd.read_excel(uploaded_mrp)
+                st.dataframe(raw.head(8), use_container_width=True, hide_index=True)
+                cols = list(raw.columns)
                 c1, c2, c3 = st.columns(3)
-                op_col = c1.selectbox("OP / Projeto", cols, index=cols.index(find_col(raw, ["op", "projeto", "ordem de produção"])) if find_col(raw, ["op", "projeto", "ordem de produção"]) in cols else 0)
-                code_col = c1.selectbox("Código", cols, index=cols.index(find_col(raw, ["código", "codigo", "cod material"])) if find_col(raw, ["código", "codigo", "cod material"]) in cols else 0)
-                desc_col = c2.selectbox("Descrição", cols, index=cols.index(find_col(raw, ["descrição", "descricao"])) if find_col(raw, ["descrição", "descricao"]) in cols else 0)
-                qty_col = c2.selectbox("Quantidade demanda", cols, index=cols.index(find_col(raw, ["quantidade", "qtd", "demanda"])) if find_col(raw, ["quantidade", "qtd", "demanda"]) in cols else 0)
-                cm_col = c3.selectbox("Data CM", cols, index=cols.index(find_col(raw, ["data cm", "dt cm"])) if find_col(raw, ["data cm", "dt cm"]) in cols else 0)
-                saldo_col = c3.selectbox("Saldo em estoque", cols, index=cols.index(find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"])) if find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"]) in cols else 0)
+                op_col = c1.selectbox("Coluna OP / Projeto", cols, index=cols.index(find_col(raw, ["op", "projeto", "ordem de produção"])) if find_col(raw, ["op", "projeto", "ordem de produção"]) in cols else 0)
+                code_col = c1.selectbox("Coluna Código", cols, index=cols.index(find_col(raw, ["código", "codigo", "cod material", "material"])) if find_col(raw, ["código", "codigo", "cod material", "material"]) in cols else 0)
+                desc_col = c2.selectbox("Coluna Descrição", cols, index=cols.index(find_col(raw, ["descrição", "descricao"])) if find_col(raw, ["descrição", "descricao"]) in cols else 0)
+                qty_col = c2.selectbox("Coluna Quantidade", cols, index=cols.index(find_col(raw, ["quantidade", "qtd", "demanda"])) if find_col(raw, ["quantidade", "qtd", "demanda"]) in cols else 0)
+                cm_col = c3.selectbox("Coluna Data CM", cols, index=cols.index(find_col(raw, ["data cm", "dt cm", "cm"])) if find_col(raw, ["data cm", "dt cm", "cm"]) in cols else 0)
+                stock_col = c3.selectbox("Coluna Saldo em Estoque", cols, index=cols.index(find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"])) if find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"]) in cols else 0)
+
                 if st.button("Processar MRP Consulta", type="primary"):
-                    import_materials(raw, {"op": op_col, "codigo": code_col, "descricao": desc_col, "quantidade": qty_col, "data_cm": cm_col, "saldo": saldo_col})
+                    import_materials(
+                        raw,
+                        {
+                            "op": op_col,
+                            "codigo": code_col,
+                            "descricao": desc_col,
+                            "quantidade": qty_col,
+                            "data_cm": cm_col,
+                            "saldo": stock_col,
+                        },
+                    )
                     st.success("MRP Consulta processada.")
                     st.rerun()
+            except Exception as exc:
+                st.exception(exc)
 
 
 elif page == "Histórico":
-    history = pd.DataFrame(st.session_state.history)
-    if history.empty:
+    st.markdown("#### Histórico e rastreabilidade")
+    hist = pd.DataFrame(st.session_state.history)
+    if hist.empty:
         st.info("Ainda não existem eventos registrados.")
     else:
-        c1, c2 = st.columns([1.5, 1])
+        c1, c2 = st.columns([1.4, 1])
         search = c1.text_input("Buscar OP / evento / detalhe")
-        events = sorted(history["evento"].unique().tolist())
-        selected = c2.multiselect("Evento", events, default=events)
-        view = history[history["evento"].isin(selected)].copy()
+        event_options = sorted(hist["evento"].dropna().unique().tolist())
+        event_filter = c2.multiselect("Tipo de evento", event_options, default=event_options)
+        view = hist[hist["evento"].isin(event_filter)].copy()
         if search.strip():
             term = search.strip().lower()
-            view = view[
+            mask = (
                 view["op"].astype(str).str.lower().str.contains(term, na=False)
                 | view["evento"].astype(str).str.lower().str.contains(term, na=False)
                 | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
-            ]
+            )
+            view = view[mask]
         st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
 
     st.divider()
-    st.markdown("#### Importações")
+    st.markdown("#### Importações realizadas")
     imports = pd.DataFrame(st.session_state.imports)
     if imports.empty:
-        st.caption("Nenhuma importação nesta sessão.")
+        st.caption("Nenhuma importação registrada nesta sessão.")
     else:
         st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
 
-    st.info("Nesta fase de validação os dados ainda ficam na sessão do Streamlit. Depois conectaremos o histórico ao Supabase.")
+    st.info(
+        "Nesta fase de validação os dados estão em memória da sessão. "
+        "Após aprovação do fluxo, a persistência será ligada ao banco de dados."
+    )
