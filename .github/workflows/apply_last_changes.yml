@@ -15,13 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Apply patch
-        run: python scripts/patch_last_changes.py
+        run: python scripts/patch_last_changes_v2.py
       - name: Commit patch
         shell: bash
         run: |
           git config user.name "juniorsousa-oss"
           git config user.email "juniorsousa@unipam.edu.br"
-          git add app_main.py streamlit_app.py
+          git add app_main.py streamlit_runtime_v8.py
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
