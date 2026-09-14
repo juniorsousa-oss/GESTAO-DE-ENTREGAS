@@ -224,6 +224,26 @@ def _markdown_ui(body, *args, **kwargs):
               box-shadow: 0 8px 22px rgba(15, 23, 42, .085);
           }
 
+
+          div[class*="st-key-dash_kpi_"] {
+              margin-top: -116px !important;
+              height: 116px !important;
+              position: relative !important;
+              z-index: 20 !important;
+          }
+
+          div[class*="st-key-dash_kpi_"] button {
+              width: 100% !important;
+              height: 116px !important;
+              min-height: 116px !important;
+              opacity: 0 !important;
+              cursor: pointer !important;
+              border: 0 !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+          }
+
           .kpi-card::before {
               content: "";
               position: absolute;
@@ -299,6 +319,10 @@ st.markdown = _markdown_ui
 _original_metric = DeltaGenerator.metric
 
 
+def _set_dashboard_filter(value):
+    st.session_state["dashboard_filter"] = value
+
+
 def _metric_ui(self, label, value, *args, **kwargs):
     label_text = str(label)
     value_text = str(value)
@@ -326,17 +350,23 @@ def _metric_ui(self, label, value, *args, **kwargs):
     delta = kwargs.get("delta")
     delta_html = f'<div class="kpi-delta">{escape(str(delta))}</div>' if delta not in (None, "") else ""
 
-    filter_slugs = {
-        "Projetos": "all",
-        "Pendentes": "pending",
-        "Separados": "separated",
-        "Entregues": "delivered",
-        "Alertas críticos": "alerts",
-        "Materiais p/ entrega": "materials",
+    filter_values = {
+        "Projetos": ("Projetos", "all"),
+        "Pendentes": ("Pendentes", "pending"),
+        "Separados": ("Separados", "separated"),
+        "Entregues": ("Entregues", "delivered"),
+        "Alertas críticos": ("Alertas críticos", "alerts"),
+        "Materiais p/ entrega": ("Materiais p/ entrega", "materials"),
     }
 
-    card_html = (
-        f'<div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};">'
+    selected_style = ""
+    if label_text in filter_values:
+        target, _ = filter_values[label_text]
+        if st.session_state.get("dashboard_filter", "Projetos") == target:
+            selected_style = f"box-shadow:0 0 0 2px {accent}, 0 8px 22px rgba(15,23,42,.085);"
+
+    html = (
+        f'<div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};{selected_style}">'
         '<div class="kpi-header">'
         '<span class="kpi-dot"></span>'
         f'<span class="kpi-label">{escape(label_text)}</span>'
@@ -345,31 +375,18 @@ def _metric_ui(self, label, value, *args, **kwargs):
         f'{delta_html}'
         '</div>'
     )
+    self.markdown(html, unsafe_allow_html=True)
 
-    if label_text in filter_slugs:
-        slug = filter_slugs[label_text]
-        current = st.query_params.get("dash", "all")
-        if isinstance(current, list):
-            current = current[0] if current else "all"
-        selected_style = (
-            f"box-shadow:0 0 0 2px {accent}, 0 8px 22px rgba(15,23,42,.085);"
-            if str(current) == slug else ""
+    if label_text in filter_values:
+        target, slug = filter_values[label_text]
+        self.button(
+            " ",
+            key=f"dash_kpi_{slug}",
+            on_click=_set_dashboard_filter,
+            args=(target,),
+            use_container_width=True,
         )
-        card_html = card_html.replace(
-            'class="kpi-card" style="',
-            f'class="kpi-card" style="cursor:pointer;{selected_style}',
-            1,
-        )
-        html = (
-            f'<a href="?dash={slug}" target="_self" '
-            'style="display:block;text-decoration:none!important;color:inherit!important;">'
-            f'{card_html}</a>'
-        )
-    else:
-        html = card_html
-
-    html = "".join(line.strip() for line in html.splitlines())
-    return self.markdown(html, unsafe_allow_html=True)
+    return None
 
 
 DeltaGenerator.metric = _metric_ui

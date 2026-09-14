@@ -416,7 +416,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 15")
+    st.caption("APP core build 16")
 
 
 if page == "Dashboard":
@@ -424,18 +424,9 @@ if page == "Dashboard":
     materials = st.session_state.materials
     alerts = int(schedule["alerta_ativo"].fillna(False).astype(bool).sum()) if not schedule.empty else 0
 
-    dash_value = st.query_params.get("dash", "all")
-    if isinstance(dash_value, list):
-        dash_value = dash_value[0] if dash_value else "all"
-    dash_map = {
-        "all": "Projetos",
-        "pending": "Pendentes",
-        "separated": "Separados",
-        "delivered": "Entregues",
-        "alerts": "Alertas críticos",
-        "materials": "Materiais p/ entrega",
-    }
-    active_filter = dash_map.get(str(dash_value), "Projetos")
+    if "dashboard_filter" not in st.session_state:
+        st.session_state["dashboard_filter"] = "Projetos"
+    active_filter = st.session_state.get("dashboard_filter", "Projetos")
 
     total_projects = len(schedule)
     total_pending = int((schedule["status"] == "Pendente").sum()) if not schedule.empty else 0
