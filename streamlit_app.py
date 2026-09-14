@@ -1,221 +1,137 @@
 from pathlib import Path
+import runpy
+from types import SimpleNamespace
 
-# Esta versão mantém integralmente a UI anterior e aplica somente correções
-# determinísticas no carregamento histórico antes de executá-la.
-_source_path = Path(__file__).with_name("streamlit_ui_legacy.py")
-_source = _source_path.read_text(encoding="utf-8")
+import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
-
-def _replace_once(old, new, label):
-    global _source
-    if old not in _source:
-        raise RuntimeError(f"Patch de interface não encontrado: {label}")
-    _source = _source.replace(old, new, 1)
+# Mantém a versão funcional anterior intacta e intercepta apenas a tabela
+# principal do cronograma para permitir seleção de várias OPs.
+_native_dataframe = DeltaGenerator.dataframe
+_native_caption = DeltaGenerator.caption
 
 
-_replace_once(
-'''        if not rows:
-            st.session_state["_entrega_supabase_sync"] = True
-            return True
+def _dataframe_multi(self, data=None, *args, **kwargs):
+    is_cronograma = kwargs.get("key") == "cronograma_selecao"
+    if is_cronograma:
+        kwargs["selection_mode"] = "multi-row"
 
-        full = pd.DataFrame(rows)
-        for col in ["data_separacao", "ultima_alteracao_cronograma"]:
-            if col in full.columns:
-                full[col] = pd.to_datetime(full[col], errors="coerce").dt.date
-''',
-'''        if not rows:
-            st.session_state["_entrega_supabase_current_full"] = pd.DataFrame()
-            st.session_state["_entrega_supabase_sync"] = True
-            return True
+    result = _native_dataframe(self, data, *args, **kwargs)
 
-        full = pd.DataFrame(rows)
-        for col in ["data_separacao", "ultima_alteracao_cronograma"]:
-            if col in full.columns:
-                full[col] = pd.to_datetime(full[col], errors="coerce").dt.date
-        st.session_state["_entrega_supabase_current_full"] = full.copy()
-''',
-"sincronização completa do cronograma",
-)
+    if is_cronograma:
+        try:
+            rows = list(result.selection.rows)
+        except Exception:
+            rows = []
 
-_replace_once(
-'''def _build_history_payload(prepared):
-    prepared = sorted(prepared, key=lambda x: x["reference_date"])
-    previous = {}
-''',
-'''def _build_history_payload(prepared):
-    prepared = sorted(prepared, key=lambda x: x["reference_date"])
-    seed_snapshot = st.session_state.get("snapshot") or {}
-    previous = {}
-    if isinstance(seed_snapshot, dict):
-        for op, rec in seed_snapshot.items():
-            d = rec.get("data_separacao")
-            if d is None or pd.isna(d):
-                d = None
-            previous[str(op)] = {
-                "op": str(op),
-                "psy": rec.get("psy", ""),
-                "cliente": rec.get("cliente", ""),
-                "produto": rec.get("produto", ""),
-                "data_separacao": d,
-            }
-    has_prior_snapshot = bool(previous)
-''',
-"baseline incremental",
-)
+        if len(rows) > 1:
+            st.session_state["_cronograma_bulk_rows"] = rows
+            # Impede que o painel individual abra a primeira OP quando a intenção
+            # do operador é executar uma ação em lote.
+            return SimpleNamespace(selection=SimpleNamespace(rows=[]))
 
-_replace_once(
-'''            if not existed:
-''',
-'''            if not existed and (has_prior_snapshot or pos > 0):
-''',
-"primeira aparição sem alerta retroativo",
-)
+        st.session_state["_cronograma_bulk_rows"] = []
 
-_replace_once(
-'''            elif old_date != new_date:
-''',
-'''            elif existed and old_date != new_date:
-''',
-"comparação somente de OP existente",
-)
+    return result
 
-_replace_once(
-'''    existing_schedule = st.session_state.get("schedule")
-    existing_by_op = {}
-    if isinstance(existing_schedule, pd.DataFrame) and not existing_schedule.empty:
-        for _, row in existing_schedule.iterrows():
-            existing_by_op[str(row.get("op", ""))] = row.to_dict()
-''',
-'''    existing_source = st.session_state.get("_entrega_supabase_current_full")
-    if not isinstance(existing_source, pd.DataFrame) or existing_source.empty:
-        existing_source = st.session_state.get("schedule")
-    existing_by_op = {}
-    if isinstance(existing_source, pd.DataFrame) and not existing_source.empty:
-        for _, row in existing_source.iterrows():
-            existing_by_op[str(row.get("op", ""))] = row.to_dict()
-''',
-"preservação do estado completo",
-)
 
-_replace_once(
-'''    st.caption(
-        "Envie os relatórios antigos, informe a data de referência de cada arquivo e "
-        "o sistema reconstruirá a evolução do cronograma em ordem cronológica."
-    )
-''',
-'''    st.caption(
-        "Envie os relatórios antigos, informe a data de referência de cada arquivo e "
-        "o sistema reconstruirá a evolução do cronograma em ordem cronológica."
-    )
+def _caption_build(self, body, *args, **kwargs):
+    if str(body).strip() == "UI build 08":
+        return None
+    return _native_caption(self, body, *args, **kwargs)
 
-    last_success = st.session_state.pop("_hist_success", None)
-    if last_success:
-        st.success(last_success)
-''',
-"mensagem pós-carga",
-)
 
-_replace_once(
-'''    files = st.file_uploader(
-        "Arquivos do cronograma",
-''',
-'''    st.markdown("#### Cargas registradas no banco")
-    latest_registered_date = None
-    try:
-        registered = _supabase_api("list_imports", timeout=30).get("data") or []
-        if registered:
-            registered_df = pd.DataFrame(registered)
-            registered_df["data_referencia"] = pd.to_datetime(
-                registered_df["data_referencia"], errors="coerce"
-            ).dt.date
-            latest_registered_date = registered_df["data_referencia"].max()
-            show_cols = [
-                "data_referencia", "arquivo_nome", "qtd_ops",
-                "qtd_com_data", "qtd_sem_data"
-            ]
-            st.dataframe(
-                registered_df[show_cols],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "data_referencia": st.column_config.DateColumn("Data referência", format="DD/MM/YYYY"),
-                    "arquivo_nome": "Arquivo",
-                    "qtd_ops": "OPs",
-                    "qtd_com_data": "Com data",
-                    "qtd_sem_data": "Sem data",
-                },
-            )
-        else:
-            st.caption("Nenhuma carga histórica registrada ainda.")
-    except Exception as exc:
-        st.warning(f"Não foi possível consultar as cargas registradas: {exc}")
+DeltaGenerator.dataframe = _dataframe_multi
+DeltaGenerator.caption = _caption_build
 
-    st.divider()
+# Executa integralmente a versão anterior em toda renderização do Streamlit.
+_runtime_path = Path(__file__).with_name("streamlit_runtime_v8.py")
+app = runpy.run_path(str(_runtime_path))
 
-    files = st.file_uploader(
-        "Arquivos do cronograma",
-''',
-"visualização das cargas registradas",
-)
+if app.get("page") == "Cronograma":
+    selected_rows = st.session_state.get("_cronograma_bulk_rows", [])
+    view = app.get("view")
+    tab_current = app.get("tab_current")
 
-_replace_once(
-'''    prepared.sort(key=lambda x: x["reference_date"])
-    st.markdown("#### Ordem de processamento")
-''',
-'''    prepared.sort(key=lambda x: x["reference_date"])
-    if latest_registered_date and prepared[0]["reference_date"] <= latest_registered_date:
-        st.error(
-            f"A próxima carga deve ser posterior a {latest_registered_date.strftime('%d/%m/%Y')}. "
-            "Isso preserva a sequência histórica já registrada."
-        )
-        return
+    if len(selected_rows) > 1 and view is not None and tab_current is not None:
+        valid_rows = [
+            i for i in selected_rows
+            if isinstance(i, int) and 0 <= i < len(view)
+        ]
+        selected_ops = view.iloc[valid_rows]["op"].astype(str).drop_duplicates().tolist() if valid_rows else []
 
-    st.markdown("#### Ordem de processamento")
-''',
-"ordem cronológica obrigatória",
-)
+        if selected_ops:
+            with tab_current:
+                st.markdown("#### Ação em lote")
+                st.info(f"{len(selected_ops)} OPs selecionadas. O status escolhido será aplicado a todas de uma vez.")
 
-_replace_once(
-'''            st.success(
-                f"Carga concluída: {result.get('importacoes', len(payload['imports']))} arquivo(s), "
-                f"{result.get('snapshots', len(payload['snapshots']))} snapshots e "
-                f"{result.get('eventos', len(payload['events']))} eventos."
-            )
-            st.info(
-                "A situação do arquivo mais recente passou a ser o cronograma atual. "
-                "A coluna Última alteração será exibida nas tabelas do cronograma."
-            )
-''',
-'''            st.session_state["_hist_success"] = (
-                f"Carga concluída: {result.get('importacoes', len(payload['imports']))} arquivo(s), "
-                f"{result.get('snapshots', len(payload['snapshots']))} snapshots e "
-                f"{result.get('eventos', len(payload['events']))} eventos."
-            )
-            st.rerun()
-''',
-"atualização visual após gravação",
-)
+                with st.expander("Ver OPs selecionadas", expanded=False):
+                    cols = [c for c in ["op", "cliente", "produto", "data_separacao", "status"] if c in view.columns]
+                    st.dataframe(
+                        view.iloc[valid_rows][cols],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "op": "OP",
+                            "cliente": "Cliente",
+                            "produto": "Produto",
+                            "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                            "status": "Status atual",
+                        },
+                    )
 
-# Corrige o caso em que uma OP sem Data de Separação volta do pandas como NaT.
-# A função principal passa a converter qualquer data nula para None antes de
-# comparar com datetime.date.
-_replace_once(
-'''_app_path = Path(__file__).with_name("app_main.py")
-exec(compile(_app_path.read_text(encoding="utf-8"), str(_app_path), "exec"), globals())
-''',
-'''_app_path = Path(__file__).with_name("app_main.py")
-_app_source = _app_path.read_text(encoding="utf-8")
-_app_source = _app_source.replace(
-    "def classify_change(old_date, new_date, existed):\\n    h = today()\\n",
-    "def classify_change(old_date, new_date, existed):\\n    if old_date is None or pd.isna(old_date):\\n        old_date = None\\n    if new_date is None or pd.isna(new_date):\\n        new_date = None\\n    h = today()\\n",
-    1,
-)
-exec(compile(_app_source, str(_app_path), "exec"), globals())
-''',
-"normalização de datas nulas na carga atual",
-)
+                c1, c2 = st.columns([1, 1.4])
+                status_options = list(app.get("STATUS", ["Pendente", "Separado", "Entregue"]))
+                default_idx = status_options.index("Separado") if "Separado" in status_options else 0
+                new_status = c1.selectbox(
+                    "Novo status",
+                    status_options,
+                    index=default_idx,
+                    key="bulk_new_status",
+                )
+                responsible = c2.text_input(
+                    "Responsável",
+                    value="Operador",
+                    key="bulk_responsavel",
+                )
 
-_source = _source.replace('st.sidebar.caption("UI build 06")', 'st.sidebar.caption("UI build 08")')
-_source = _source.replace('st.sidebar.caption("UI build 07")', 'st.sidebar.caption("UI build 08")')
+                if st.button(
+                    f"Aplicar {new_status} em {len(selected_ops)} OPs",
+                    type="primary",
+                    use_container_width=True,
+                    key="bulk_apply_status",
+                ):
+                    try:
+                        with st.spinner("Atualizando OPs selecionadas..."):
+                            result = app["_supabase_api"](
+                                "update_status_bulk",
+                                {
+                                    "ops": selected_ops,
+                                    "status": new_status,
+                                    "responsavel": responsible or "Operador",
+                                },
+                                timeout=45,
+                            )
+                            st.session_state["_entrega_supabase_sync"] = False
+                            app["_sync_current_from_supabase"](force=True)
 
-exec(compile(_source, str(_source_path), "exec"), globals())
+                        updated = int(result.get("atualizadas", 0))
+                        unchanged = int(result.get("sem_alteracao", 0))
+                        missing = int(result.get("nao_encontradas", 0))
+                        msg = f"{updated} OP(s) alterada(s) para {new_status}."
+                        if unchanged:
+                            msg += f" {unchanged} já estavam nesse status."
+                        if missing:
+                            msg += f" {missing} não foram encontradas no banco."
+                        st.session_state["_bulk_status_success"] = msg
+                        st.session_state["_cronograma_bulk_rows"] = []
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
+
+    bulk_msg = st.session_state.pop("_bulk_status_success", None)
+    if bulk_msg and tab_current is not None:
+        with tab_current:
+            st.success(bulk_msg)
+
+st.sidebar.caption("UI build 09")
