@@ -1,6 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from io import BytesIO
+from pathlib import Path
+import base64
 import json
 
 import pandas as pd
@@ -493,12 +495,52 @@ st.markdown('<div class="app-title">Gestão de Entregas à Produção</div>', un
 st.markdown('<div class="app-sub">Cronograma de Montagem • Materiais • Histórico • Dashboard</div>', unsafe_allow_html=True)
 
 with st.sidebar:
+    st.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"] .logo-preview {
+            width: 100%;
+            height: 5.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px dashed rgba(49, 51, 63, 0.28);
+            border-radius: 0.5rem;
+            background: #fff;
+            box-sizing: border-box;
+            overflow: hidden;
+            margin: 0 0 1rem 0;
+        }
+        section[data-testid="stSidebar"] .logo-preview img {
+            display: block;
+            max-width: 145px;
+            max-height: 78px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
+    try:
+        logo_bytes = logo_path.read_bytes()
+        encoded_logo = base64.b64encode(logo_bytes).decode("ascii")
+        st.markdown(
+            f'<div class="logo-preview"><img src="data:image/svg+xml;base64,{encoded_logo}" alt="Logo Setta"></div>',
+            unsafe_allow_html=True,
+        )
+    except OSError:
+        pass
+
     st.markdown("### Navegação")
     page = st.radio("Página", ["Dashboard", "Cronograma", "Carga histórica", "Materiais", "Histórico"], label_visibility="collapsed")
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 33")
+    st.caption("APP core build 34")
 
 
 if page == "Dashboard":
