@@ -1,0 +1,30 @@
+name: Bulk PCP Teams message
+
+on:
+  push:
+    paths:
+      - '.github/workflows/bulk_pcp_teams_message.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/bulk_pcp_teams_message.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add app_main.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Make PCP occurrence handling collective"
+          git push
