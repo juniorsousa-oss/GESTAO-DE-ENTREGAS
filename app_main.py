@@ -496,7 +496,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 26")
+    st.caption("APP core build 27")
 
 
 if page == "Dashboard":
@@ -604,10 +604,9 @@ elif page == "Cronograma":
         if schedule.empty:
             st.info("Nenhuma OP com Data de Separação carregada.")
         else:
-            f1, f2, f3 = st.columns([1.4, 1, 1])
+            f1, f2 = st.columns([1.7, 1])
             search = f1.text_input("Buscar OP / cliente / produto")
             status_filter = f2.multiselect("Status", CRONOGRAMA_STATUS, default=CRONOGRAMA_STATUS)
-            only_alerts = f3.checkbox("Somente alertas críticos")
 
             view = schedule[schedule["status"].isin(status_filter)].copy()
             if search.strip():
@@ -619,8 +618,6 @@ elif page == "Cronograma":
                     | view["produto"].astype(str).str.lower().str.contains(term, na=False)
                 )
                 view = view[mask]
-            if only_alerts:
-                view = view[view["alerta_ativo"]]
 
             view = view.sort_values(["data_separacao", "op"]).reset_index(drop=True)
 
@@ -963,11 +960,7 @@ elif page == "Materiais":
         if materials.empty:
             st.info("Nenhuma aba Demanda_Projeto carregada.")
         else:
-            f_projeto, f_pendencia = st.columns([2.2, 1])
-            projeto_filtro = f_projeto.text_input(
-                "Projeto",
-                placeholder="Digite a OP / Projeto",
-            )
+            f_pendencia, f_projeto = st.columns([1, 2.2])
             pendencia_filtro = f_pendencia.selectbox(
                 "Condição de pendência",
                 ["Todos", "SIM", "NÃO"],
@@ -975,12 +968,6 @@ elif page == "Materiais":
             )
 
             view = materials.copy()
-            if projeto_filtro.strip():
-                term = projeto_filtro.strip().lower()
-                view = view[
-                    view["Projeto"].astype(str).str.lower().str.contains(term, na=False)
-                ]
-
             if pendencia_filtro != "Todos" and "Condição de pendência" in view.columns:
                 view = view[
                     view["Condição de pendência"]
@@ -988,6 +975,25 @@ elif page == "Materiais":
                     .astype(str)
                     .str.upper()
                     .eq(pendencia_filtro)
+                ]
+
+            projeto_opcoes = sorted(
+                {
+                    normalize_op(v)
+                    for v in view["Projeto"].dropna().tolist()
+                    if normalize_op(v)
+                }
+            )
+            projeto_filtro = f_projeto.selectbox(
+                "Projeto",
+                ["Todos"] + projeto_opcoes,
+                index=0,
+                help="A lista mostra somente as OPs existentes no critério de pendência selecionado.",
+            )
+
+            if projeto_filtro != "Todos":
+                view = view[
+                    view["Projeto"].map(normalize_op).eq(projeto_filtro)
                 ]
 
             st.caption(
