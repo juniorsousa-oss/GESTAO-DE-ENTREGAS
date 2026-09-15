@@ -53,6 +53,7 @@ def _supabase_api(action, payload=None, timeout=45):
         "list_imports": "entrega_listar_importacoes",
         "load_materials": "entrega_listar_mrp_atual",
         "load_material_ops": "entrega_listar_mrp_operacoes",
+        "list_daily_alerts": "entrega_listar_alertas_diarios",
     }
     if action in direct_rpc:
         rpc_url = f"https://cuixazpxkvniqldmmnth.supabase.co/rest/v1/rpc/{direct_rpc[action]}"
