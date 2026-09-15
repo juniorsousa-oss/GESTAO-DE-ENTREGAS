@@ -401,6 +401,24 @@ def import_materials(raw):
     return base
 
 
+def total_items_by_op(materials=None):
+    materials = st.session_state.materials if materials is None else materials
+    if not isinstance(materials, pd.DataFrame) or materials.empty:
+        return {}
+    required = {"Projeto", "Produto"}
+    if not required.issubset(materials.columns):
+        return {}
+
+    base = materials[["Projeto", "Produto"]].copy()
+    base["Projeto"] = base["Projeto"].map(normalize_op)
+    base["Produto"] = base["Produto"].map(normalize_op)
+    base = base[(base["Projeto"] != "") & (base["Produto"] != "")]
+    if base.empty:
+        return {}
+
+    return base.groupby("Projeto")["Produto"].nunique().astype(int).to_dict()
+
+
 def pending_items_by_op(materials=None):
     materials = st.session_state.materials if materials is None else materials
     if not isinstance(materials, pd.DataFrame) or materials.empty:
@@ -431,7 +449,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 22")
+    st.caption("APP core build 23")
 
 
 if page == "Dashboard":
@@ -443,12 +461,13 @@ if page == "Dashboard":
         st.session_state["dashboard_filter"] = "Projetos"
     active_filter = st.session_state.get("dashboard_filter", "Projetos")
 
-    pending_item_map = pending_items_by_op(materials)
+    total_item_map = total_items_by_op(materials)
+    pending_balance_map = pending_items_by_op(materials)
     total_projects = len(schedule)
     total_pending = int((schedule["status"] == "Pendente").sum()) if not schedule.empty else 0
     total_separated = int((schedule["status"] == "Separado").sum()) if not schedule.empty else 0
     total_delivered = int((schedule["status"] == "Entregue").sum()) if not schedule.empty else 0
-    total_materials = int(sum(pending_item_map.values()))
+    total_materials = int(sum(pending_balance_map.values()))
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Projetos", total_projects)
@@ -471,11 +490,14 @@ if page == "Dashboard":
     elif active_filter == "Alertas críticos":
         dashboard_view = dashboard_view[dashboard_view["alerta_ativo"].fillna(False).astype(bool)]
     elif active_filter == "Materiais p/ entrega":
-        pending_ops = set(pending_item_map.keys())
+        pending_ops = set(pending_balance_map.keys())
         dashboard_view = dashboard_view[dashboard_view["op"].astype(str).isin(pending_ops)]
 
     dashboard_view["qtd_itens_pendentes"] = (
-        dashboard_view["op"].astype(str).map(pending_item_map).fillna(0).astype(int)
+        dashboard_view["op"].astype(str).map(total_item_map).fillna(0).astype(int)
+    )
+    dashboard_view["pendencias_com_saldo"] = (
+        dashboard_view["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
     )
 
     section_title = "Próximas separações" if active_filter == "Projetos" else f"Projetos • {active_filter}"
@@ -489,7 +511,7 @@ if page == "Dashboard":
     else:
         dashboard_cols = [
             c for c in [
-                "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "data_separacao", "status",
+                "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
                 "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "tipo_alerta"
             ] if c in dashboard_view.columns
         ]
@@ -503,6 +525,7 @@ if page == "Dashboard":
                 "cliente": "Cliente",
                 "produto": "Produto",
                 "qtd_itens_pendentes": st.column_config.NumberColumn("Quantidade de itens pendentes", format="%d"),
+                "pendencias_com_saldo": st.column_config.NumberColumn("Pendências com saldo", format="%d"),
                 "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                 "status": "Status",
                 "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
@@ -517,10 +540,14 @@ elif page == "Cronograma":
 
     with tab_current:
         schedule = st.session_state.schedule.copy()
-        pending_item_map = pending_items_by_op()
+        total_item_map = total_items_by_op()
+        pending_balance_map = pending_items_by_op()
         if not schedule.empty:
             schedule["qtd_itens_pendentes"] = (
-                schedule["op"].astype(str).map(pending_item_map).fillna(0).astype(int)
+                schedule["op"].astype(str).map(total_item_map).fillna(0).astype(int)
+            )
+            schedule["pendencias_com_saldo"] = (
+                schedule["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
             )
         if schedule.empty:
             st.info("Nenhuma OP com Data de Separação carregada.")
@@ -549,7 +576,7 @@ elif page == "Cronograma":
 
             editor_columns = [
                 c for c in [
-                    "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "data_separacao", "status",
+                    "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
                     "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
                     "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
                 ] if c in view.columns
@@ -574,6 +601,7 @@ elif page == "Cronograma":
                     "cliente": "Cliente",
                     "produto": "Produto",
                     "qtd_itens_pendentes": st.column_config.NumberColumn("Quantidade de itens pendentes", format="%d"),
+                    "pendencias_com_saldo": st.column_config.NumberColumn("Pendências com saldo", format="%d"),
                     "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                     "status": "Status",
                     "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
