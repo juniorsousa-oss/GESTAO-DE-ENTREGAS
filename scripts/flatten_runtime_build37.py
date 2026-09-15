@@ -18,7 +18,11 @@ runtime_build = runtime.replace(
     f'Path({str(generated_path)!r}).write_text(_source, encoding="utf-8")',
     1,
 )
-exec(compile(runtime_build, str(runtime_path), 'exec'), {})
+namespace = {
+    '__file__': str(runtime_path.resolve()),
+    '__name__': '__runtime_flatten_build__',
+}
+exec(compile(runtime_build, str(runtime_path), 'exec'), namespace)
 
 flat = generated_path.read_text(encoding='utf-8')
 
@@ -64,7 +68,11 @@ flat = flat.replace(
     '_sync_bootstrap_from_supabase()\n',
     1,
 )
-flat = flat.replace('\n\n_sync_material_summary_from_supabase()\n\n\ndef _sync_materials_from_supabase', '\n\n\ndef _sync_materials_from_supabase', 1)
+flat = flat.replace(
+    '\n\n_sync_material_summary_from_supabase()\n\n\ndef _sync_materials_from_supabase',
+    '\n\n\ndef _sync_materials_from_supabase',
+    1,
+)
 
 out_path.write_text(flat, encoding='utf-8')
 generated_path.unlink(missing_ok=True)
