@@ -431,7 +431,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 20")
+    st.caption("APP core build 21")
 
 
 if page == "Dashboard":
@@ -858,6 +858,11 @@ elif page == "Materiais":
 
     with tab_list:
         materials = st.session_state.materials.copy()
+        material_view_cols = MATERIAL_COLS + ["Condição de pendência"]
+        ordered_cols = [c for c in material_view_cols if c in materials.columns]
+        extra_cols = [c for c in materials.columns if c not in ordered_cols]
+        if ordered_cols or extra_cols:
+            materials = materials[ordered_cols + extra_cols]
         if materials.empty:
             st.info("Nenhuma aba Demanda_Projeto carregada.")
         else:

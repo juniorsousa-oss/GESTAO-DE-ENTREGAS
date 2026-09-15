@@ -158,7 +158,15 @@ def _sync_materials_from_supabase(force=False):
         payload = result.get("data") or {}
         rows = payload.get("dados") or [] if isinstance(payload, dict) else []
         if rows:
-            st.session_state["materials"] = pd.DataFrame(rows)
+            materials_df = pd.DataFrame(rows)
+            material_order = [
+                "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
+                "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
+                "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação", "Condição de pendência",
+            ]
+            ordered_cols = [c for c in material_order if c in materials_df.columns]
+            extra_cols = [c for c in materials_df.columns if c not in ordered_cols]
+            st.session_state["materials"] = materials_df[ordered_cols + extra_cols]
         elif "materials" not in st.session_state:
             st.session_state["materials"] = pd.DataFrame()
         if isinstance(payload, dict):
