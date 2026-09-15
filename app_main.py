@@ -497,7 +497,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 30")
+    st.caption("APP core build 31")
 
 
 if page == "Dashboard":
@@ -972,37 +972,41 @@ elif page == "Cronograma":
                 st.exception(exc)
 
     with tab_pcp:
+        pcp_success = st.session_state.pop("_pcp_bulk_success", None)
+        if pcp_success:
+            st.success(pcp_success)
         schedule = st.session_state.schedule
         pending = schedule[schedule["alerta_ativo"]].copy() if not schedule.empty else pd.DataFrame()
         if pending.empty:
             st.success("Não existem alertas críticos pendentes de tratativa.")
         else:
-            st.markdown(f'<div class="critical"><b>{len(pending)} ocorrência(s) crítica(s) pendente(s).</b><br>O alerta só é encerrado após registrar a tratativa com o PCP.</div>', unsafe_allow_html=True)
+            pending = pending.sort_values(["data_separacao", "op"], na_position="last").reset_index(drop=True)
+            st.markdown(
+                f'<div class="critical"><b>{len(pending)} ocorrência(s) crítica(s) pendente(s).</b><br>'
+                'As ações abaixo consideram todas as OPs exibidas nesta tela.</div>',
+                unsafe_allow_html=True,
+            )
             st.dataframe(
                 pending[["op", "cliente", "produto", "data_separacao", "tipo_alerta", "tratativa_pcp"]],
                 use_container_width=True,
                 hide_index=True,
                 column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
             )
-            op_pcp = st.selectbox("OP para tratativa", pending["op"].astype(str).tolist())
-
-            ocorrencia_sel = pending[
-                pending["op"].astype(str).eq(str(op_pcp))
-            ].iloc[0]
 
             teams_chat_url = (
                 "https://teams.microsoft.com/l/chat/19:aaaabe3d1f234eac84de2954bc9c1505@thread.v2/"
                 "conversations?context=%7B%22contextType%22%3A%22chat%22%7D"
             )
+            ops_pcp = pending["op"].astype(str).drop_duplicates().tolist()
+            linhas_projetos = [
+                f"PROJETO {str(row['op'])} - {fmt_date(row.get('data_separacao'))}"
+                for _, row in pending.drop_duplicates(subset=["op"]).iterrows()
+            ]
             teams_message = "\n".join([
-                "ALTERAÇÃO CRONOGRAMA DE MONTAGEM",
-                f"OP: {op_pcp}",
-                f"PSY: {ocorrencia_sel.get('psy', '')}",
-                f"Cliente: {ocorrencia_sel.get('cliente', '')}",
-                f"Produto: {ocorrencia_sel.get('produto', '')}",
-                f"Data de Separação: {fmt_date(ocorrencia_sel.get('data_separacao'))}",
-                f"Ocorrência: {ocorrencia_sel.get('tipo_alerta', '')}",
-                f"Tratativa PCP: {ocorrencia_sel.get('tratativa_pcp', '')}",
+                "OPS IDENTIFICADAS COM ALTERAÇÃO DE DATA INCONSISTENTE:",
+                f"DATA DE IDENTIFICAÇÃO: {today().strftime('%d/%m/%Y')}",
+                "",
+                *linhas_projetos,
             ])
 
             with st.expander("Prévia da mensagem para o Teams", expanded=False):
@@ -1017,7 +1021,7 @@ elif page == "Cronograma":
                     width:100%;height:42px;border:0;border-radius:8px;
                     background:#5b5fc7;color:white;font-weight:700;cursor:pointer;
                     font-size:14px;
-                  ">Enviar ocorrência ao Teams</button>
+                  ">Enviar ocorrências ao Teams</button>
                   <div id="teams-occurrence-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>
                 </div>
                 <script>
@@ -1051,7 +1055,7 @@ elif page == "Cronograma":
                     window.open(teamsUrl, '_blank', 'noopener,noreferrer');
                     const status = document.getElementById('teams-occurrence-status');
                     status.textContent = copied
-                      ? 'Mensagem copiada. No Teams, cole a mensagem e envie.'
+                      ? 'Mensagem com todas as OPs copiada. No Teams, cole e envie.'
                       : 'Teams aberto. Copie a mensagem pela prévia acima e envie.';
                   }});
                 </script>
@@ -1059,15 +1063,37 @@ elif page == "Cronograma":
                 height=78,
             )
 
-            user_pcp = st.text_input("Responsável pela tratativa", value="Operador")
-            detail_pcp = st.text_area("Descrição da tratativa realizada")
-            if st.button("Concluir tratativa PCP", type="primary"):
-                if not detail_pcp.strip():
-                    st.warning("Informe a tratativa realizada.")
+            user_pcp = st.text_input(
+                "Responsável / Operador",
+                value="Operador",
+                key="pcp_bulk_responsavel",
+            )
+
+            if st.button("Concluir ações", type="primary", key="pcp_bulk_concluir"):
+                if "_supabase_api" not in globals():
+                    st.error("Conexão com o Supabase indisponível. As ocorrências não foram concluídas.")
                 else:
-                    close_treatment(op_pcp, detail_pcp.strip(), user_pcp)
-                    st.success("Tratativa registrada e alerta encerrado.")
-                    st.rerun()
+                    try:
+                        result = _supabase_api(
+                            "close_pcp_bulk",
+                            {
+                                "ops": ops_pcp,
+                                "responsavel": user_pcp or "Operador",
+                            },
+                            timeout=45,
+                        )
+                        st.session_state["_entrega_supabase_sync"] = False
+                        if "_sync_current_from_supabase" in globals():
+                            _sync_current_from_supabase(force=True)
+                        atualizadas = int(result.get("atualizadas", 0))
+                        ignoradas = int(result.get("ignoradas", 0))
+                        st.session_state["_pcp_bulk_success"] = (
+                            f"{atualizadas} ocorrência(s) concluída(s) por {user_pcp or 'Operador'}."
+                            + (f" {ignoradas} ocorrência(s) já estavam encerradas ou não foram encontradas." if ignoradas else "")
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível concluir as ocorrências: {exc}")
 
 
 elif page == "Materiais":
