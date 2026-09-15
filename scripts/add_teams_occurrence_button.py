@@ -44,7 +44,51 @@ new = '''            op_pcp = st.selectbox("OP para tratativa", pending["op"].as
             msg_js = json.dumps(teams_message, ensure_ascii=False)
             url_js = json.dumps(teams_chat_url)
             components.html(
-                f'''\n                <div style="font-family:Arial,sans-serif;">\n                  <button id="teams-occurrence-btn" style="\n                    width:100%;height:42px;border:0;border-radius:8px;\n                    background:#5b5fc7;color:white;font-weight:700;cursor:pointer;\n                    font-size:14px;\n                  ">Enviar ocorrência ao Teams</button>\n                  <div id="teams-occurrence-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>\n                </div>\n                <script>\n                  const occurrenceMessage = {msg_js};\n                  const teamsUrl = {url_js};\n\n                  async function copyOccurrenceMessage() {{\n                    try {{\n                      await navigator.clipboard.writeText(occurrenceMessage);\n                      return true;\n                    }} catch (err) {{\n                      try {{\n                        const textarea = document.createElement('textarea');\n                        textarea.value = occurrenceMessage;\n                        textarea.style.position = 'fixed';\n                        textarea.style.left = '-9999px';\n                        document.body.appendChild(textarea);\n                        textarea.focus();\n                        textarea.select();\n                        const ok = document.execCommand('copy');\n                        document.body.removeChild(textarea);\n                        return ok;\n                      }} catch (fallbackErr) {{\n                        return false;\n                      }}\n                    }}\n                  }}\n\n                  document.getElementById('teams-occurrence-btn').addEventListener('click', async () => {{\n                    const copied = await copyOccurrenceMessage();\n                    window.open(teamsUrl, '_blank', 'noopener,noreferrer');\n                    const status = document.getElementById('teams-occurrence-status');\n                    status.textContent = copied\n                      ? 'Mensagem copiada. No Teams, cole a mensagem e envie.'\n                      : 'Teams aberto. Copie a mensagem pela prévia acima e envie.';\n                  }});\n                </script>\n                ''',
+                f"""
+                <div style="font-family:Arial,sans-serif;">
+                  <button id="teams-occurrence-btn" style="
+                    width:100%;height:42px;border:0;border-radius:8px;
+                    background:#5b5fc7;color:white;font-weight:700;cursor:pointer;
+                    font-size:14px;
+                  ">Enviar ocorrência ao Teams</button>
+                  <div id="teams-occurrence-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>
+                </div>
+                <script>
+                  const occurrenceMessage = {msg_js};
+                  const teamsUrl = {url_js};
+
+                  async function copyOccurrenceMessage() {{
+                    try {{
+                      await navigator.clipboard.writeText(occurrenceMessage);
+                      return true;
+                    }} catch (err) {{
+                      try {{
+                        const textarea = document.createElement('textarea');
+                        textarea.value = occurrenceMessage;
+                        textarea.style.position = 'fixed';
+                        textarea.style.left = '-9999px';
+                        document.body.appendChild(textarea);
+                        textarea.focus();
+                        textarea.select();
+                        const ok = document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        return ok;
+                      }} catch (fallbackErr) {{
+                        return false;
+                      }}
+                    }}
+                  }}
+
+                  document.getElementById('teams-occurrence-btn').addEventListener('click', async () => {{
+                    const copied = await copyOccurrenceMessage();
+                    window.open(teamsUrl, '_blank', 'noopener,noreferrer');
+                    const status = document.getElementById('teams-occurrence-status');
+                    status.textContent = copied
+                      ? 'Mensagem copiada. No Teams, cole a mensagem e envie.'
+                      : 'Teams aberto. Copie a mensagem pela prévia acima e envie.';
+                  }});
+                </script>
+                """,
                 height=78,
             )
 
