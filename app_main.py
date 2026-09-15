@@ -495,7 +495,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 24")
+    st.caption("APP core build 25")
 
 
 if page == "Dashboard":
@@ -506,39 +506,45 @@ if page == "Dashboard":
     if "dashboard_filter" not in st.session_state:
         st.session_state["dashboard_filter"] = "Projetos"
     active_filter = st.session_state.get("dashboard_filter", "Projetos")
+    filter_aliases = {
+        "Pendentes": "Com pendências",
+        "Separados": "Em processo",
+        "Materiais p/ entrega": "Projetos",
+    }
+    active_filter = filter_aliases.get(active_filter, active_filter)
+    st.session_state["dashboard_filter"] = active_filter
 
     total_item_map = total_items_by_op(materials)
     pending_balance_map = pending_items_by_op(materials)
     schedule = apply_operational_statuses(schedule, total_item_map)
     total_projects = len(schedule)
-    total_pending = int((schedule["status"] == "Pendências").sum()) if not schedule.empty else 0
-    total_separated = int((schedule["status"] == "Separado").sum()) if not schedule.empty else 0
+    total_waiting = int((schedule["status"] == "Aguardando separação").sum()) if not schedule.empty else 0
+    total_in_process = int(schedule["status"].isin(["Em separação", "Separado"]).sum()) if not schedule.empty else 0
+    total_with_pending = int((schedule["status"] == "Pendências").sum()) if not schedule.empty else 0
     total_delivered = int((schedule["status"] == "Entregue").sum()) if not schedule.empty else 0
-    total_materials = int(sum(pending_balance_map.values()))
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Projetos", total_projects)
-    c2.metric("Pendentes", total_pending)
-    c3.metric("Separados", total_separated)
-    c4.metric("Entregues", total_delivered)
-    c5.metric("Alertas críticos", alerts)
-    c6.metric("Materiais p/ entrega", total_materials)
+    c2.metric("Aguardando separação", total_waiting)
+    c3.metric("Em processo", total_in_process)
+    c4.metric("Com pendências", total_with_pending)
+    c5.metric("Entregues", total_delivered)
+    c6.metric("Alertas críticos", alerts)
 
     if alerts:
         st.markdown(f'<div class="critical"><b>{alerts} projeto(s) com tratativa PCP pendente.</b></div>', unsafe_allow_html=True)
 
     dashboard_view = schedule.copy()
-    if active_filter == "Pendentes":
+    if active_filter == "Aguardando separação":
+        dashboard_view = dashboard_view[dashboard_view["status"] == "Aguardando separação"]
+    elif active_filter == "Em processo":
+        dashboard_view = dashboard_view[dashboard_view["status"].isin(["Em separação", "Separado"])]
+    elif active_filter == "Com pendências":
         dashboard_view = dashboard_view[dashboard_view["status"] == "Pendências"]
-    elif active_filter == "Separados":
-        dashboard_view = dashboard_view[dashboard_view["status"] == "Separado"]
     elif active_filter == "Entregues":
         dashboard_view = dashboard_view[dashboard_view["status"] == "Entregue"]
     elif active_filter == "Alertas críticos":
         dashboard_view = dashboard_view[dashboard_view["alerta_ativo"].fillna(False).astype(bool)]
-    elif active_filter == "Materiais p/ entrega":
-        pending_ops = set(pending_balance_map.keys())
-        dashboard_view = dashboard_view[dashboard_view["op"].astype(str).isin(pending_ops)]
 
     dashboard_view["qtd_itens_pendentes"] = (
         dashboard_view["op"].astype(str).map(total_item_map).fillna(0).astype(int)

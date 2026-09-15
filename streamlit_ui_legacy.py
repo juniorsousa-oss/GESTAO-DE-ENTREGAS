@@ -368,10 +368,13 @@ def _metric_ui(self, label, value, *args, **kwargs):
 
     palette = {
         "Projetos": ("#2563eb", "rgba(37,99,235,.12)"),
-        "Pendentes": ("#d97706", "rgba(217,119,6,.13)"),
-        "Separados": ("#0891b2", "rgba(8,145,178,.12)"),
+        "Aguardando separação": ("#d97706", "rgba(217,119,6,.13)"),
+        "Em processo": ("#0891b2", "rgba(8,145,178,.12)"),
+        "Com pendências": ("#f97316", "rgba(249,115,22,.13)"),
         "Entregues": ("#16a34a", "rgba(22,163,74,.12)"),
         "Alertas críticos": ("#dc2626", "rgba(220,38,38,.12)"),
+        "Pendentes": ("#d97706", "rgba(217,119,6,.13)"),
+        "Separados": ("#0891b2", "rgba(8,145,178,.12)"),
         "Materiais p/ entrega": ("#7c3aed", "rgba(124,58,237,.12)"),
         "Linhas do Excel": ("#475569", "rgba(71,85,105,.12)"),
         "OPs consolidadas": ("#2563eb", "rgba(37,99,235,.12)"),
@@ -391,11 +394,11 @@ def _metric_ui(self, label, value, *args, **kwargs):
 
     filter_values = {
         "Projetos": ("Projetos", "all"),
-        "Pendentes": ("Pendentes", "pending"),
-        "Separados": ("Separados", "separated"),
+        "Aguardando separação": ("Aguardando separação", "waiting"),
+        "Em processo": ("Em processo", "in_process"),
+        "Com pendências": ("Com pendências", "with_pending"),
         "Entregues": ("Entregues", "delivered"),
         "Alertas críticos": ("Alertas críticos", "alerts"),
-        "Materiais p/ entrega": ("Materiais p/ entrega", "materials"),
     }
 
     selected_style = ""
