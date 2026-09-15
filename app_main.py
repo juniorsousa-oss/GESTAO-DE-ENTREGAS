@@ -431,7 +431,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 21")
+    st.caption("APP core build 22")
 
 
 if page == "Dashboard":
@@ -866,16 +866,32 @@ elif page == "Materiais":
         if materials.empty:
             st.info("Nenhuma aba Demanda_Projeto carregada.")
         else:
-            search = st.text_input("Buscar Projeto / Produto / Descrição")
+            f_projeto, f_pendencia = st.columns([2.2, 1])
+            projeto_filtro = f_projeto.text_input(
+                "Projeto",
+                placeholder="Digite a OP / Projeto",
+            )
+            pendencia_filtro = f_pendencia.selectbox(
+                "Condição de pendência",
+                ["Todos", "SIM", "NÃO"],
+                index=0,
+            )
+
             view = materials.copy()
-            if search.strip():
-                term = search.strip().lower()
-                mask = (
+            if projeto_filtro.strip():
+                term = projeto_filtro.strip().lower()
+                view = view[
                     view["Projeto"].astype(str).str.lower().str.contains(term, na=False)
-                    | view["Produto"].astype(str).str.lower().str.contains(term, na=False)
-                    | view["Descrição"].astype(str).str.lower().str.contains(term, na=False)
-                )
-                view = view[mask]
+                ]
+
+            if pendencia_filtro != "Todos" and "Condição de pendência" in view.columns:
+                view = view[
+                    view["Condição de pendência"]
+                    .fillna("")
+                    .astype(str)
+                    .str.upper()
+                    .eq(pendencia_filtro)
+                ]
 
             st.caption(
                 "A tabela reproduz a aba Demanda_Projeto e acrescenta apenas a coluna Condição de pendência. "
