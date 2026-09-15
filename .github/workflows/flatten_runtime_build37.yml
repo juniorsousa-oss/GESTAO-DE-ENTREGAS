@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/flatten_runtime_build37.yml'
+      - 'scripts/flatten_runtime_build37.py'
 
 permissions:
   contents: write
