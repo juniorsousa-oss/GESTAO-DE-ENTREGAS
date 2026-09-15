@@ -556,7 +556,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 35")
+    st.caption("APP core build 36")
 
 
 if page == "Dashboard":

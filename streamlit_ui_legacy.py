@@ -49,6 +49,7 @@ def _supabase_api(action, payload=None, timeout=45):
     # Leituras simples vão direto ao PostgREST/RPC. Isso evita consumo
     # desnecessário de Edge Functions e reduz risco de atingir a cota.
     direct_rpc = {
+        "bootstrap": "entrega_bootstrap",
         "list_current": "entrega_listar_cronograma",
         "list_imports": "entrega_listar_importacoes",
         "load_materials": "entrega_listar_mrp_atual",
@@ -87,6 +88,93 @@ def _supabase_api(action, payload=None, timeout=45):
         raise RuntimeError(data.get("error") or f"Erro HTTP {response.status_code}")
     return data
 
+
+
+def _sync_bootstrap_from_supabase(force=False):
+    if not _supabase_anon_key():
+        return False
+    if (
+        st.session_state.get("_entrega_supabase_sync")
+        and st.session_state.get("_entrega_mrp_summary_sync")
+        and not force
+    ):
+        return True
+
+    try:
+        result = _supabase_api("bootstrap", timeout=20)
+        payload = result.get("data") or {}
+        if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
+            payload = payload[0]
+        if not isinstance(payload, dict):
+            payload = {}
+
+        rows = payload.get("cronograma") or []
+        full = pd.DataFrame(rows)
+        if not full.empty:
+            for col in ["data_separacao", "ultima_alteracao_cronograma", "ultima_alteracao_equipe"]:
+                if col in full.columns:
+                    full[col] = pd.to_datetime(full[col], errors="coerce").dt.date
+            st.session_state["_entrega_supabase_current_full"] = full.copy()
+
+            snapshot = {}
+            ops_state = {}
+            for _, r in full.iterrows():
+                op = str(r.get("op", ""))
+                snapshot[op] = {
+                    "op": op,
+                    "psy": r.get("psy") or "",
+                    "cliente": r.get("cliente") or "",
+                    "produto": r.get("produto") or "",
+                    "data_separacao": r.get("data_separacao"),
+                }
+                ops_state[op] = {
+                    "status": r.get("status") or "Pendente",
+                    "alerta_ativo": bool(r.get("alerta_ativo", False)),
+                    "tipo_alerta": r.get("tipo_alerta") or "",
+                    "tratativa_pcp": r.get("tratativa_pcp") or "",
+                    "ultimo_comentario": r.get("ultimo_comentario") or "",
+                }
+
+            active = full[full["data_separacao"].notna()].copy()
+            active["ultima_atualizacao"] = ""
+            base_cols = [
+                "op", "psy", "cliente", "produto", "data_separacao", "status",
+                "alerta_ativo", "tipo_alerta", "tratativa_pcp", "ultimo_comentario",
+                "ultima_atualizacao",
+            ]
+            for col in base_cols:
+                if col not in active.columns:
+                    active[col] = False if col == "alerta_ativo" else ""
+
+            st.session_state["schedule"] = active
+            st.session_state["snapshot"] = snapshot
+            st.session_state["ops_state"] = ops_state
+            st.session_state["baseline_loaded"] = True
+        else:
+            st.session_state["_entrega_supabase_current_full"] = pd.DataFrame()
+
+        summary = pd.DataFrame(payload.get("mrp_resumo") or [])
+        expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em"]
+        for col in expected:
+            if col not in summary.columns:
+                summary[col] = [] if summary.empty else None
+        if not summary.empty:
+            summary["projeto"] = summary["projeto"].fillna("").astype(str).str.strip()
+            summary["qtd_itens_pendentes"] = pd.to_numeric(
+                summary["qtd_itens_pendentes"], errors="coerce"
+            ).fillna(0).astype(int)
+            summary["pendencias_com_saldo"] = pd.to_numeric(
+                summary["pendencias_com_saldo"], errors="coerce"
+            ).fillna(0).astype(int)
+        st.session_state["_entrega_mrp_summary"] = summary[expected].copy()
+
+        st.session_state["_entrega_supabase_sync"] = True
+        st.session_state["_entrega_mrp_summary_sync"] = True
+        st.session_state["_entrega_bootstrap_sync"] = True
+        return True
+    except Exception as exc:
+        st.session_state["_entrega_bootstrap_error"] = str(exc)
+        return False
 
 def _sync_current_from_supabase(force=False):
     if not _supabase_anon_key():
@@ -147,6 +235,7 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
+_sync_bootstrap_from_supabase()
 _sync_current_from_supabase()
 
 
@@ -261,6 +350,13 @@ def _markdown_ui(body, *args, **kwargs):
               max-width: 100% !important;
               margin-left: 0 !important;
               margin-right: 0 !important;
+          }
+
+          section[data-testid="stSidebar"][aria-expanded="true"] {
+              width: 245px !important;
+              min-width: 245px !important;
+              max-width: 245px !important;
+              flex-basis: 245px !important;
           }
 
           section[data-testid="stSidebar"][aria-expanded="false"] {
