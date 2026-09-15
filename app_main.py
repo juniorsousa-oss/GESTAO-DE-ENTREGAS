@@ -497,7 +497,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 31")
+    st.caption("APP core build 32")
 
 
 if page == "Dashboard":
@@ -1102,6 +1102,26 @@ elif page == "Materiais":
     mrp_success = st.session_state.pop("_mrp_success", None)
     if mrp_success:
         st.success(mrp_success)
+    material_action_success = st.session_state.pop("_material_action_success", None)
+    if material_action_success:
+        st.success(material_action_success)
+
+    def _sync_material_ops(force=False):
+        if st.session_state.get("_entrega_mrp_ops_sync") and not force:
+            return True
+        if "_supabase_api" not in globals():
+            return False
+        try:
+            result = _supabase_api("load_material_ops", timeout=30)
+            rows = result.get("data") or []
+            st.session_state["_entrega_mrp_ops"] = pd.DataFrame(rows)
+            st.session_state["_entrega_mrp_ops_sync"] = True
+            return True
+        except Exception as exc:
+            st.session_state["_entrega_mrp_ops_error"] = str(exc)
+            return False
+
+    _sync_material_ops()
 
     with tab_list:
         materials = st.session_state.materials.copy()
@@ -1149,15 +1169,173 @@ elif page == "Materiais":
                     view["Projeto"].map(normalize_op).eq(projeto_filtro)
                 ]
 
-            st.caption(
-                "A tabela reproduz a aba Demanda_Projeto e acrescenta apenas a coluna Condição de pendência. "
-                "SIM = Data CM anterior a hoje e Ação contendo atendimento por Estoque."
-            )
-            st.dataframe(
-                view,
-                use_container_width=True,
-                hide_index=True,
-            )
+            # Vincula o andamento operacional sem alterar a base original do MRP.
+            ops_df = st.session_state.get("_entrega_mrp_ops", pd.DataFrame())
+            ops_lookup = {}
+            if isinstance(ops_df, pd.DataFrame) and not ops_df.empty:
+                for _, op_row in ops_df.iterrows():
+                    key = (
+                        normalize_op(op_row.get("projeto")),
+                        normalize_op(op_row.get("produto")),
+                    )
+                    ops_lookup[key] = {
+                        "status": str(op_row.get("status") or "Pendente"),
+                        "comentario": str(op_row.get("ultimo_comentario") or ""),
+                        "responsavel": str(op_row.get("responsavel") or ""),
+                        "atualizado_em": op_row.get("atualizado_em"),
+                    }
+
+            def _op_info(row):
+                key = (normalize_op(row.get("Projeto")), normalize_op(row.get("Produto")))
+                return ops_lookup.get(key, {
+                    "status": "Pendente",
+                    "comentario": "",
+                    "responsavel": "",
+                    "atualizado_em": None,
+                })
+
+            infos = view.apply(_op_info, axis=1) if not view.empty else pd.Series(dtype=object)
+            view = view.copy()
+            if not view.empty:
+                view["Status separação"] = infos.map(lambda x: x["status"])
+                view["Último comentário"] = infos.map(lambda x: x["comentario"])
+                view["Responsável"] = infos.map(lambda x: x["responsavel"])
+                view["Atualizado em"] = infos.map(lambda x: x["atualizado_em"])
+            else:
+                view["Status separação"] = pd.Series(dtype=str)
+                view["Último comentário"] = pd.Series(dtype=str)
+                view["Responsável"] = pd.Series(dtype=str)
+                view["Atualizado em"] = pd.Series(dtype=object)
+
+            pendentes_view = view[view["Status separação"] != "Separado"].reset_index(drop=True)
+            entregues_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
+
+            tab_pending, tab_done = st.tabs([
+                f"Pendentes de separação ({len(pendentes_view)})",
+                f"Marcados como entregue ({len(entregues_view)})",
+            ])
+
+            with tab_pending:
+                st.caption(
+                    "Selecione um ou mais materiais. Ao marcar como separado, eles saem desta lista "
+                    "e passam para a aba Marcados como entregue."
+                )
+                if pendentes_view.empty:
+                    st.success("Não existem itens pendentes dentro dos filtros selecionados.")
+                else:
+                    editor = pendentes_view.copy()
+                    editor.insert(0, "Selecionar", False)
+                    edited = st.data_editor(
+                        editor,
+                        use_container_width=True,
+                        hide_index=True,
+                        key="materiais_pendentes_editor",
+                        disabled=[c for c in editor.columns if c != "Selecionar"],
+                        column_config={
+                            "Selecionar": st.column_config.CheckboxColumn(
+                                "Selecionar",
+                                help="Marque um ou mais itens para executar a ação em lote.",
+                                default=False,
+                            ),
+                        },
+                    )
+                    selected = edited[edited["Selecionar"].fillna(False).astype(bool)].copy()
+
+                    if not selected.empty:
+                        st.markdown(f"**{len(selected)} item(ns) selecionado(s).**")
+                        responsavel_material = st.text_input(
+                            "Responsável / Operador",
+                            value="Operador",
+                            key="material_bulk_responsavel",
+                        )
+                        comentario_material = st.text_area(
+                            "Comentário para os itens selecionados (opcional ao separar)",
+                            placeholder="Ex.: material separado e identificado no carrinho do projeto.",
+                            key="material_bulk_comentario",
+                            height=90,
+                        )
+
+                        itens_payload = [
+                            {
+                                "projeto": normalize_op(r.get("Projeto")),
+                                "produto": normalize_op(r.get("Produto")),
+                            }
+                            for _, r in selected.iterrows()
+                        ]
+
+                        b1, b2 = st.columns(2)
+                        if b1.button(
+                            "Marcar selecionados como separado",
+                            type="primary",
+                            use_container_width=True,
+                            key="material_bulk_separado",
+                        ):
+                            if "_supabase_api" not in globals():
+                                st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
+                            else:
+                                try:
+                                    result = _supabase_api(
+                                        "material_action_bulk",
+                                        {
+                                            "itens": itens_payload,
+                                            "status": "Separado",
+                                            "comentario": comentario_material.strip() or None,
+                                            "responsavel": responsavel_material or "Operador",
+                                        },
+                                        timeout=45,
+                                    )
+                                    _sync_material_ops(force=True)
+                                    st.session_state["_material_action_success"] = (
+                                        f"{int(result.get('atualizados', len(itens_payload)))} item(ns) "
+                                        "marcado(s) como separado e movido(s) para Marcados como entregue."
+                                    )
+                                    st.session_state.pop("materiais_pendentes_editor", None)
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível marcar os itens como separados: {exc}")
+
+                        if b2.button(
+                            "Salvar comentário",
+                            use_container_width=True,
+                            key="material_bulk_comment",
+                        ):
+                            if not comentario_material.strip():
+                                st.warning("Digite um comentário antes de salvar.")
+                            elif "_supabase_api" not in globals():
+                                st.error("Conexão com o Supabase indisponível. O comentário não foi salvo.")
+                            else:
+                                try:
+                                    result = _supabase_api(
+                                        "material_action_bulk",
+                                        {
+                                            "itens": itens_payload,
+                                            "status": None,
+                                            "comentario": comentario_material.strip(),
+                                            "responsavel": responsavel_material or "Operador",
+                                        },
+                                        timeout=45,
+                                    )
+                                    _sync_material_ops(force=True)
+                                    st.session_state["_material_action_success"] = (
+                                        f"Comentário salvo em {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                    )
+                                    st.session_state.pop("materiais_pendentes_editor", None)
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível salvar o comentário: {exc}")
+                    else:
+                        st.caption("Marque os itens desejados na primeira coluna para liberar as ações em lote.")
+
+            with tab_done:
+                st.caption("Itens já marcados como separados pela equipe.")
+                if entregues_view.empty:
+                    st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
+                else:
+                    st.dataframe(
+                        entregues_view,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
     with tab_import:
         st.markdown("#### Importar MRP Consulta")
