@@ -52,6 +52,7 @@ def _supabase_api(action, payload=None, timeout=45):
         "list_current": "entrega_listar_cronograma",
         "list_imports": "entrega_listar_importacoes",
         "load_materials": "entrega_listar_mrp_atual",
+        "load_material_summary": "entrega_listar_mrp_resumo",
         "load_material_ops": "entrega_listar_mrp_operacoes",
         "list_daily_alerts": "entrega_listar_alertas_diarios",
     }
@@ -149,6 +150,43 @@ def _sync_current_from_supabase(force=False):
 _sync_current_from_supabase()
 
 
+def _sync_material_summary_from_supabase(force=False):
+    if not _supabase_anon_key():
+        return False
+    if st.session_state.get("_entrega_mrp_summary_sync") and not force:
+        return True
+
+    try:
+        result = _supabase_api("load_material_summary", timeout=20)
+        rows = result.get("data") or []
+        summary = pd.DataFrame(rows)
+        expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em"]
+        for col in expected:
+            if col not in summary.columns:
+                summary[col] = [] if summary.empty else None
+        if not summary.empty:
+            summary["projeto"] = summary["projeto"].fillna("").astype(str).str.strip()
+            summary["qtd_itens_pendentes"] = pd.to_numeric(
+                summary["qtd_itens_pendentes"], errors="coerce"
+            ).fillna(0).astype(int)
+            summary["pendencias_com_saldo"] = pd.to_numeric(
+                summary["pendencias_com_saldo"], errors="coerce"
+            ).fillna(0).astype(int)
+        st.session_state["_entrega_mrp_summary"] = summary[expected].copy()
+        st.session_state["_entrega_mrp_summary_sync"] = True
+        return True
+    except Exception as exc:
+        st.session_state["_entrega_mrp_summary_error"] = str(exc)
+        if "_entrega_mrp_summary" not in st.session_state:
+            st.session_state["_entrega_mrp_summary"] = pd.DataFrame(
+                columns=["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em"]
+            )
+        return False
+
+
+_sync_material_summary_from_supabase()
+
+
 def _sync_materials_from_supabase(force=False):
     if not _supabase_anon_key():
         return False
@@ -183,8 +221,6 @@ def _sync_materials_from_supabase(force=False):
         st.session_state["_entrega_mrp_sync_error"] = str(exc)
         return False
 
-
-_sync_materials_from_supabase()
 
 _original_markdown = st.markdown
 

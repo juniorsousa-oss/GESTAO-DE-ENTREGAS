@@ -410,6 +410,13 @@ def import_materials(raw):
 def total_items_by_op(materials=None):
     materials = st.session_state.materials if materials is None else materials
     if not isinstance(materials, pd.DataFrame) or materials.empty:
+        summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
+        if isinstance(summary, pd.DataFrame) and not summary.empty:
+            return {
+                normalize_op(r.get("projeto")): int(r.get("qtd_itens_pendentes", 0) or 0)
+                for _, r in summary.iterrows()
+                if normalize_op(r.get("projeto"))
+            }
         return {}
     required = {"Projeto", "Produto"}
     if not required.issubset(materials.columns):
@@ -428,6 +435,13 @@ def total_items_by_op(materials=None):
 def pending_items_by_op(materials=None):
     materials = st.session_state.materials if materials is None else materials
     if not isinstance(materials, pd.DataFrame) or materials.empty:
+        summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
+        if isinstance(summary, pd.DataFrame) and not summary.empty:
+            return {
+                normalize_op(r.get("projeto")): int(r.get("pendencias_com_saldo", 0) or 0)
+                for _, r in summary.iterrows()
+                if normalize_op(r.get("projeto"))
+            }
         return {}
     required = {"Projeto", "Produto", "Condição de pendência"}
     if not required.issubset(materials.columns):
@@ -540,7 +554,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 34")
+    st.caption("APP core build 35")
 
 
 if page == "Dashboard":
@@ -1140,6 +1154,11 @@ elif page == "Cronograma":
 
 
 elif page == "Materiais":
+    # Lazy load: as 4k+ linhas completas do MRP só são baixadas quando
+    # o usuário realmente entra na tela de Materiais.
+    if "_sync_materials_from_supabase" in globals():
+        _sync_materials_from_supabase()
+
     tab_list, tab_import = st.tabs(["Demanda por projeto", "Importar MRP Consulta"])
 
     mrp_success = st.session_state.pop("_mrp_success", None)
@@ -1417,8 +1436,11 @@ elif page == "Materiais":
                                     timeout=90,
                                 )
                                 st.session_state["_entrega_mrp_sync"] = False
+                                st.session_state["_entrega_mrp_summary_sync"] = False
                                 if "_sync_materials_from_supabase" in globals():
                                     _sync_materials_from_supabase(force=True)
+                                if "_sync_material_summary_from_supabase" in globals():
+                                    _sync_material_summary_from_supabase(force=True)
                                 st.session_state["_mrp_success"] = (
                                     f"MRP salvo no Supabase com {int(result.get('linhas', len(base)))} linha(s). "
                                     "Esta carga será restaurada automaticamente ao abrir o app."
