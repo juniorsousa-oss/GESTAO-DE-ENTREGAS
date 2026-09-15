@@ -13,7 +13,8 @@ st.set_page_config(
 )
 
 TZ = ZoneInfo("America/Sao_Paulo")
-STATUS = ["Pendente", "Separado", "Entregue"]
+STATUS = ["Pendências", "Aguardando separação", "Em separação", "Separado", "Entregue"]
+MANUAL_STATUS = ["Em separação", "Separado"]
 MASTER_COLS = [
     "op", "psy", "cliente", "produto", "data_separacao", "status",
     "alerta_ativo", "tipo_alerta", "tratativa_pcp", "ultimo_comentario",
@@ -440,6 +441,51 @@ def pending_items_by_op(materials=None):
     return base.groupby("Projeto")["Produto"].nunique().astype(int).to_dict()
 
 
+def apply_operational_statuses(schedule, total_item_map):
+    if not isinstance(schedule, pd.DataFrame) or schedule.empty:
+        return schedule.copy() if isinstance(schedule, pd.DataFrame) else schedule
+
+    result = schedule.copy()
+    result["qtd_itens_pendentes"] = (
+        result["op"].astype(str).map(total_item_map).fillna(0).astype(int)
+    )
+
+    effective_status = []
+    for _, row in result.iterrows():
+        qty = int(row.get("qtd_itens_pendentes", 0) or 0)
+        d = row.get("data_separacao")
+        if d is not None and not pd.isna(d) and isinstance(d, pd.Timestamp):
+            d = d.date()
+        stored = str(row.get("status") or "").strip()
+
+        if qty == 0:
+            status = "Entregue"
+        elif d is not None and not pd.isna(d) and d < today():
+            status = "Pendências"
+        elif stored in MANUAL_STATUS:
+            status = stored
+        else:
+            status = "Aguardando separação"
+
+        effective_status.append(status)
+
+    result["status"] = effective_status
+    return result
+
+
+def manual_status_allowed(row):
+    try:
+        qty = int(row.get("qtd_itens_pendentes", 0) or 0)
+    except Exception:
+        qty = 0
+    d = row.get("data_separacao")
+    if d is None or pd.isna(d):
+        return False
+    if isinstance(d, pd.Timestamp):
+        d = d.date()
+    return qty > 0 and d >= today()
+
+
 st.markdown('<div class="app-title">Gestão de Entregas à Produção</div>', unsafe_allow_html=True)
 st.markdown('<div class="app-sub">Cronograma de Montagem • Materiais • Histórico • Dashboard</div>', unsafe_allow_html=True)
 
@@ -449,7 +495,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 23")
+    st.caption("APP core build 24")
 
 
 if page == "Dashboard":
@@ -463,8 +509,9 @@ if page == "Dashboard":
 
     total_item_map = total_items_by_op(materials)
     pending_balance_map = pending_items_by_op(materials)
+    schedule = apply_operational_statuses(schedule, total_item_map)
     total_projects = len(schedule)
-    total_pending = int((schedule["status"] == "Pendente").sum()) if not schedule.empty else 0
+    total_pending = int((schedule["status"] == "Pendências").sum()) if not schedule.empty else 0
     total_separated = int((schedule["status"] == "Separado").sum()) if not schedule.empty else 0
     total_delivered = int((schedule["status"] == "Entregue").sum()) if not schedule.empty else 0
     total_materials = int(sum(pending_balance_map.values()))
@@ -482,7 +529,7 @@ if page == "Dashboard":
 
     dashboard_view = schedule.copy()
     if active_filter == "Pendentes":
-        dashboard_view = dashboard_view[dashboard_view["status"] == "Pendente"]
+        dashboard_view = dashboard_view[dashboard_view["status"] == "Pendências"]
     elif active_filter == "Separados":
         dashboard_view = dashboard_view[dashboard_view["status"] == "Separado"]
     elif active_filter == "Entregues":
@@ -543,9 +590,7 @@ elif page == "Cronograma":
         total_item_map = total_items_by_op()
         pending_balance_map = pending_items_by_op()
         if not schedule.empty:
-            schedule["qtd_itens_pendentes"] = (
-                schedule["op"].astype(str).map(total_item_map).fillna(0).astype(int)
-            )
+            schedule = apply_operational_statuses(schedule, total_item_map)
             schedule["pendencias_com_saldo"] = (
                 schedule["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
             )
@@ -617,59 +662,69 @@ elif page == "Cronograma":
             ].tolist()
 
             if len(selected_rows) > 1:
-                selected_ops = view.iloc[selected_rows]["op"].astype(str).drop_duplicates().tolist()
-                st.markdown("#### Ação em lote")
-                st.info(f"{len(selected_ops)} OPs selecionadas. Escolha o novo status para aplicar a todas.")
+                selected_projects = view.iloc[selected_rows].copy()
+                eligibility = selected_projects.apply(manual_status_allowed, axis=1)
+                blocked_count = int((~eligibility).sum())
 
-                b1, b2 = st.columns([1, 1.4])
-                bulk_status = b1.selectbox(
-                    "Novo status",
-                    STATUS,
-                    index=STATUS.index("Separado") if "Separado" in STATUS else 0,
-                    key="core_bulk_status",
-                )
-                bulk_user = b2.text_input(
-                    "Responsável",
-                    value="Operador",
-                    key="core_bulk_user",
-                )
+                if blocked_count:
+                    st.warning(
+                        f"{blocked_count} OP(s) selecionada(s) não podem ter o status alterado. "
+                        "Somente projetos com itens pendentes e Data de Separação para hoje ou futura podem ser alterados pela equipe."
+                    )
+                else:
+                    selected_ops = selected_projects["op"].astype(str).drop_duplicates().tolist()
+                    st.markdown("#### Ação em lote")
+                    st.info(f"{len(selected_ops)} OPs selecionadas. Escolha o novo status operacional.")
 
-                if st.button(
-                    f"Aplicar {bulk_status} em {len(selected_ops)} OPs",
-                    type="primary",
-                    use_container_width=True,
-                    key="core_bulk_apply",
-                ):
-                    try:
-                        if "_supabase_api" in globals():
-                            result = _supabase_api(
-                                "update_status_bulk",
-                                {
-                                    "ops": selected_ops,
-                                    "status": bulk_status,
-                                    "responsavel": bulk_user or "Operador",
-                                },
-                                timeout=45,
-                            )
-                            if "_sync_current_from_supabase" in globals():
-                                st.session_state["_entrega_supabase_sync"] = False
-                                _sync_current_from_supabase(force=True)
-                            updated = int(result.get("atualizadas", 0))
-                            unchanged = int(result.get("sem_alteracao", 0))
-                            st.success(
-                                f"{updated} OP(s) alterada(s) para {bulk_status}. "
-                                + (f"{unchanged} já estavam nesse status." if unchanged else "")
-                            )
-                        else:
-                            updated = 0
-                            for op in selected_ops:
-                                changed, _ = change_status(op, bulk_status, bulk_user)
-                                updated += int(changed)
-                            st.success(f"{updated} OP(s) alterada(s) para {bulk_status}.")
-                        st.session_state.pop("cronograma_selecao_editor_core", None)
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
+                    b1, b2 = st.columns([1, 1.4])
+                    bulk_status = b1.selectbox(
+                        "Novo status",
+                        MANUAL_STATUS,
+                        index=0,
+                        key="core_bulk_status",
+                    )
+                    bulk_user = b2.text_input(
+                        "Responsável",
+                        value="Operador",
+                        key="core_bulk_user",
+                    )
+
+                    if st.button(
+                        f"Aplicar {bulk_status} em {len(selected_ops)} OPs",
+                        type="primary",
+                        use_container_width=True,
+                        key="core_bulk_apply",
+                    ):
+                        try:
+                            if "_supabase_api" in globals():
+                                result = _supabase_api(
+                                    "update_status_bulk",
+                                    {
+                                        "ops": selected_ops,
+                                        "status": bulk_status,
+                                        "responsavel": bulk_user or "Operador",
+                                    },
+                                    timeout=45,
+                                )
+                                if "_sync_current_from_supabase" in globals():
+                                    st.session_state["_entrega_supabase_sync"] = False
+                                    _sync_current_from_supabase(force=True)
+                                updated = int(result.get("atualizadas", 0))
+                                unchanged = int(result.get("sem_alteracao", 0))
+                                st.success(
+                                    f"{updated} OP(s) alterada(s) para {bulk_status}. "
+                                    + (f"{unchanged} já estavam nesse status." if unchanged else "")
+                                )
+                            else:
+                                updated = 0
+                                for op in selected_ops:
+                                    changed, _ = change_status(op, bulk_status, bulk_user)
+                                    updated += int(changed)
+                                st.success(f"{updated} OP(s) alterada(s) para {bulk_status}.")
+                            st.session_state.pop("cronograma_selecao_editor_core", None)
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
 
                 # Com várias OPs marcadas, não abre o painel individual.
                 selected_rows = []
@@ -695,8 +750,15 @@ elif page == "Cronograma":
                 )
 
                 a1, a2 = st.columns(2)
-                do_status = a1.checkbox("Alterar status", key=f"chk_status_{op_selected}")
+                can_change_status = manual_status_allowed(project)
+                do_status = a1.checkbox(
+                    "Alterar status",
+                    key=f"chk_status_{op_selected}",
+                    disabled=not can_change_status,
+                )
                 do_comment = a2.checkbox("Adicionar comentário", key=f"chk_comment_{op_selected}")
+                if not can_change_status:
+                    a1.caption("Status automático: somente projetos para hoje ou futuros com itens pendentes podem ser alterados.")
 
                 responsible = st.text_input(
                     "Responsável",
@@ -704,14 +766,14 @@ elif page == "Cronograma":
                     key=f"responsavel_{op_selected}",
                 )
 
-                chosen_status = project["status"]
+                chosen_status = project["status"] if project["status"] in MANUAL_STATUS else MANUAL_STATUS[0]
                 comment_text = ""
 
                 if do_status:
                     chosen_status = st.selectbox(
                         "Novo status",
-                        STATUS,
-                        index=STATUS.index(project["status"]) if project["status"] in STATUS else 0,
+                        MANUAL_STATUS,
+                        index=MANUAL_STATUS.index(project["status"]) if project["status"] in MANUAL_STATUS else 0,
                         key=f"novo_status_{op_selected}",
                     )
 
