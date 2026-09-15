@@ -496,7 +496,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 27")
+    st.caption("APP core build 28")
 
 
 if page == "Dashboard":
@@ -546,6 +546,28 @@ if page == "Dashboard":
         dashboard_view = dashboard_view[dashboard_view["status"] == "Entregue"]
     elif active_filter == "Alertas críticos":
         dashboard_view = dashboard_view[dashboard_view["alerta_ativo"].fillna(False).astype(bool)]
+
+    if active_filter == "Aguardando separação" and not dashboard_view.empty:
+        datas_disponiveis = (
+            pd.to_datetime(dashboard_view["data_separacao"], errors="coerce")
+            .dropna()
+            .dt.date
+            .drop_duplicates()
+            .sort_values()
+            .tolist()
+        )
+        data_selecionada = st.selectbox(
+            "Data de Separação",
+            [None] + datas_disponiveis,
+            index=0,
+            format_func=lambda d: "Todas as datas" if d is None else d.strftime("%d/%m/%Y"),
+            key="dashboard_aguardando_data",
+        )
+        if data_selecionada is not None:
+            datas_linha = pd.to_datetime(
+                dashboard_view["data_separacao"], errors="coerce"
+            ).dt.date
+            dashboard_view = dashboard_view[datas_linha == data_selecionada]
 
     dashboard_view["qtd_itens_pendentes"] = (
         dashboard_view["op"].astype(str).map(total_item_map).fillna(0).astype(int)
