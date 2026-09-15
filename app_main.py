@@ -15,6 +15,7 @@ st.set_page_config(
 TZ = ZoneInfo("America/Sao_Paulo")
 STATUS = ["Pendências", "Aguardando separação", "Em separação", "Separado", "Entregue"]
 MANUAL_STATUS = ["Em separação", "Separado"]
+CRONOGRAMA_STATUS = ["Aguardando separação", "Em separação", "Separado"]
 MASTER_COLS = [
     "op", "psy", "cliente", "produto", "data_separacao", "status",
     "alerta_ativo", "tipo_alerta", "tratativa_pcp", "ultimo_comentario",
@@ -495,7 +496,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 25")
+    st.caption("APP core build 26")
 
 
 if page == "Dashboard":
@@ -605,7 +606,7 @@ elif page == "Cronograma":
         else:
             f1, f2, f3 = st.columns([1.4, 1, 1])
             search = f1.text_input("Buscar OP / cliente / produto")
-            status_filter = f2.multiselect("Status", STATUS, default=STATUS)
+            status_filter = f2.multiselect("Status", CRONOGRAMA_STATUS, default=CRONOGRAMA_STATUS)
             only_alerts = f3.checkbox("Somente alertas críticos")
 
             view = schedule[schedule["status"].isin(status_filter)].copy()
