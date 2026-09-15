@@ -1,0 +1,30 @@
+name: Add sidebar logo
+
+on:
+  push:
+    paths:
+      - '.github/workflows/add_sidebar_logo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/add_sidebar_logo.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add app_main.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add Setta logo to sidebar"
+          git push
