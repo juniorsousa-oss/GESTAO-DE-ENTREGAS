@@ -19,8 +19,9 @@ MASTER_COLS = [
     "ultima_atualizacao",
 ]
 MATERIAL_COLS = [
-    "op", "codigo", "descricao", "quantidade_demanda", "data_cm",
-    "saldo_estoque", "situacao",
+    "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
+    "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
+    "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação",
 ]
 
 st.markdown(
@@ -379,32 +380,32 @@ def find_col(df, names):
     return cols[0] if cols else None
 
 
-def import_materials(raw, mapping):
-    base = pd.DataFrame(
-        {
-            "op": raw[mapping["op"]].map(normalize_op),
-            "codigo": raw[mapping["codigo"]].map(normalize_op),
-            "descricao": raw[mapping["descricao"]].fillna("").astype(str).str.strip(),
-            "quantidade_demanda": pd.to_numeric(raw[mapping["quantidade"]], errors="coerce").fillna(0),
-            "data_cm": parse_dates(raw[mapping["data_cm"]]),
-            "saldo_estoque": pd.to_numeric(raw[mapping["saldo"]], errors="coerce").fillna(0),
-        }
-    )
-    base = base[(base["op"] != "") & (base["codigo"] != "")].copy()
+def import_materials(raw):
+    missing = [c for c in MATERIAL_COLS if c not in raw.columns]
+    if missing:
+        raise ValueError(
+            "A aba Demanda_Projeto não possui todas as colunas esperadas: " + ", ".join(missing)
+        )
+    # A aba Demanda_Projeto é exibida como veio do Excel. Não há cálculo ou
+    # reclassificação dos dados desta tabela.
+    st.session_state.materials = raw[MATERIAL_COLS].copy().reset_index(drop=True)
 
-    def situation(row):
-        d = row["data_cm"]
-        saldo = row["saldo_estoque"]
-        if d is None or pd.isna(d):
-            return "SEM DATA CM"
-        if d <= today() and saldo > 0:
-            return "ENTREGA PENDENTE"
-        if d <= today() and saldo <= 0:
-            return "SEM ESTOQUE"
-        return "AGUARDANDO DATA"
 
-    base["situacao"] = base.apply(situation, axis=1)
-    st.session_state.materials = base[MATERIAL_COLS].sort_values(["data_cm", "op"], na_position="last").reset_index(drop=True)
+def pending_items_by_op(materials=None):
+    materials = st.session_state.materials if materials is None else materials
+    if not isinstance(materials, pd.DataFrame) or materials.empty:
+        return {}
+    if "Projeto" not in materials.columns or "Produto" not in materials.columns:
+        return {}
+
+    base = materials[["Projeto", "Produto"]].copy()
+    base["Projeto"] = base["Projeto"].map(normalize_op)
+    base["Produto"] = base["Produto"].map(normalize_op)
+    base = base[(base["Projeto"] != "") & (base["Produto"] != "")]
+    if base.empty:
+        return {}
+
+    return base.groupby("Projeto")["Produto"].nunique().astype(int).to_dict()
 
 
 st.markdown('<div class="app-title">Gestão de Entregas à Produção</div>', unsafe_allow_html=True)
@@ -416,7 +417,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 17")
+    st.caption("APP core build 18")
 
 
 if page == "Dashboard":
@@ -428,11 +429,12 @@ if page == "Dashboard":
         st.session_state["dashboard_filter"] = "Projetos"
     active_filter = st.session_state.get("dashboard_filter", "Projetos")
 
+    pending_item_map = pending_items_by_op(materials)
     total_projects = len(schedule)
     total_pending = int((schedule["status"] == "Pendente").sum()) if not schedule.empty else 0
     total_separated = int((schedule["status"] == "Separado").sum()) if not schedule.empty else 0
     total_delivered = int((schedule["status"] == "Entregue").sum()) if not schedule.empty else 0
-    total_materials = int((materials["situacao"] == "ENTREGA PENDENTE").sum()) if not materials.empty else 0
+    total_materials = int(sum(pending_item_map.values()))
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Projetos", total_projects)
@@ -455,13 +457,12 @@ if page == "Dashboard":
     elif active_filter == "Alertas críticos":
         dashboard_view = dashboard_view[dashboard_view["alerta_ativo"].fillna(False).astype(bool)]
     elif active_filter == "Materiais p/ entrega":
-        if materials.empty or "op" not in materials.columns:
-            dashboard_view = dashboard_view.iloc[0:0]
-        else:
-            pending_ops = set(
-                materials.loc[materials["situacao"] == "ENTREGA PENDENTE", "op"].astype(str)
-            )
-            dashboard_view = dashboard_view[dashboard_view["op"].astype(str).isin(pending_ops)]
+        pending_ops = set(pending_item_map.keys())
+        dashboard_view = dashboard_view[dashboard_view["op"].astype(str).isin(pending_ops)]
+
+    dashboard_view["qtd_itens_pendentes"] = (
+        dashboard_view["op"].astype(str).map(pending_item_map).fillna(0).astype(int)
+    )
 
     section_title = "Próximas separações" if active_filter == "Projetos" else f"Projetos • {active_filter}"
     st.markdown(f"#### {section_title}")
@@ -474,7 +475,7 @@ if page == "Dashboard":
     else:
         dashboard_cols = [
             c for c in [
-                "op", "psy", "cliente", "produto", "data_separacao", "status",
+                "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "data_separacao", "status",
                 "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "tipo_alerta"
             ] if c in dashboard_view.columns
         ]
@@ -487,6 +488,7 @@ if page == "Dashboard":
                 "psy": "PSY",
                 "cliente": "Cliente",
                 "produto": "Produto",
+                "qtd_itens_pendentes": st.column_config.NumberColumn("Quantidade de itens pendentes", format="%d"),
                 "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                 "status": "Status",
                 "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
@@ -501,6 +503,11 @@ elif page == "Cronograma":
 
     with tab_current:
         schedule = st.session_state.schedule.copy()
+        pending_item_map = pending_items_by_op()
+        if not schedule.empty:
+            schedule["qtd_itens_pendentes"] = (
+                schedule["op"].astype(str).map(pending_item_map).fillna(0).astype(int)
+            )
         if schedule.empty:
             st.info("Nenhuma OP com Data de Separação carregada.")
         else:
@@ -528,7 +535,7 @@ elif page == "Cronograma":
 
             editor_columns = [
                 c for c in [
-                    "op", "psy", "cliente", "produto", "data_separacao", "status",
+                    "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "data_separacao", "status",
                     "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
                     "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
                 ] if c in view.columns
@@ -552,6 +559,7 @@ elif page == "Cronograma":
                     "psy": "PSY",
                     "cliente": "Cliente",
                     "produto": "Produto",
+                    "qtd_itens_pendentes": st.column_config.NumberColumn("Quantidade de itens pendentes", format="%d"),
                     "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                     "status": "Status",
                     "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
@@ -829,79 +837,59 @@ elif page == "Cronograma":
 
 elif page == "Materiais":
     tab_list, tab_import = st.tabs(["Demanda por projeto", "Importar MRP Consulta"])
+
     with tab_list:
         materials = st.session_state.materials.copy()
         if materials.empty:
-            st.info("Nenhuma base MRP carregada.")
+            st.info("Nenhuma aba Demanda_Projeto carregada.")
         else:
-            c1, c2, c3 = st.columns([1.4, 1, 1])
-            search = c1.text_input("Buscar OP / código / descrição")
-            options = sorted(materials["situacao"].unique().tolist())
-            selected = c2.multiselect("Situação", options, default=options)
-            only_pending = c3.checkbox("Somente entrega pendente")
-            view = materials[materials["situacao"].isin(selected)].copy()
-            if only_pending:
-                view = view[view["situacao"] == "ENTREGA PENDENTE"]
+            search = st.text_input("Buscar Projeto / Produto / Descrição")
+            view = materials.copy()
             if search.strip():
                 term = search.strip().lower()
                 mask = (
-                    view["op"].astype(str).str.lower().str.contains(term, na=False)
-                    | view["codigo"].astype(str).str.lower().str.contains(term, na=False)
-                    | view["descricao"].astype(str).str.lower().str.contains(term, na=False)
+                    view["Projeto"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["Produto"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["Descrição"].astype(str).str.lower().str.contains(term, na=False)
                 )
                 view = view[mask]
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Itens", len(view))
-            m2.metric("Entrega pendente", int((view["situacao"] == "ENTREGA PENDENTE").sum()))
-            m3.metric("Sem estoque", int((view["situacao"] == "SEM ESTOQUE").sum()))
-            m4.metric("Aguardando data", int((view["situacao"] == "AGUARDANDO DATA").sum()))
-
+            st.caption(
+                "A tabela abaixo reproduz a aba Demanda_Projeto do MRP Consulta sem cálculos ou reclassificações."
+            )
             st.dataframe(
                 view,
                 use_container_width=True,
                 hide_index=True,
-                column_config={
-                    "op": "OP / Projeto",
-                    "codigo": "Código",
-                    "descricao": "Descrição",
-                    "quantidade_demanda": st.column_config.NumberColumn("Qtd. Demanda"),
-                    "data_cm": st.column_config.DateColumn("Data CM", format="DD/MM/YYYY"),
-                    "saldo_estoque": st.column_config.NumberColumn("Saldo Estoque"),
-                    "situacao": "Validação",
-                },
             )
 
     with tab_import:
         st.markdown("#### Importar MRP Consulta")
+        st.caption("O sistema utilizará integralmente a aba 'Demanda_Projeto'.")
         uploaded_mrp = st.file_uploader("Selecione a planilha MRP Consulta", type=["xlsx", "xls"])
         if uploaded_mrp is not None:
             try:
-                raw = pd.read_excel(uploaded_mrp)
-                st.dataframe(raw.head(8), use_container_width=True, hide_index=True)
-                cols = list(raw.columns)
-                c1, c2, c3 = st.columns(3)
-                op_col = c1.selectbox("Coluna OP / Projeto", cols, index=cols.index(find_col(raw, ["op", "projeto", "ordem de produção"])) if find_col(raw, ["op", "projeto", "ordem de produção"]) in cols else 0)
-                code_col = c1.selectbox("Coluna Código", cols, index=cols.index(find_col(raw, ["código", "codigo", "cod material", "material"])) if find_col(raw, ["código", "codigo", "cod material", "material"]) in cols else 0)
-                desc_col = c2.selectbox("Coluna Descrição", cols, index=cols.index(find_col(raw, ["descrição", "descricao"])) if find_col(raw, ["descrição", "descricao"]) in cols else 0)
-                qty_col = c2.selectbox("Coluna Quantidade", cols, index=cols.index(find_col(raw, ["quantidade", "qtd", "demanda"])) if find_col(raw, ["quantidade", "qtd", "demanda"]) in cols else 0)
-                cm_col = c3.selectbox("Coluna Data CM", cols, index=cols.index(find_col(raw, ["data cm", "dt cm", "cm"])) if find_col(raw, ["data cm", "dt cm", "cm"]) in cols else 0)
-                stock_col = c3.selectbox("Coluna Saldo em Estoque", cols, index=cols.index(find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"])) if find_col(raw, ["saldo em estoque", "saldo estoque", "estoque", "saldo"]) in cols else 0)
-
-                if st.button("Processar MRP Consulta", type="primary"):
-                    import_materials(
-                        raw,
-                        {
-                            "op": op_col,
-                            "codigo": code_col,
-                            "descricao": desc_col,
-                            "quantidade": qty_col,
-                            "data_cm": cm_col,
-                            "saldo": stock_col,
-                        },
+                raw = pd.read_excel(uploaded_mrp, sheet_name="Demanda_Projeto")
+                missing = [c for c in MATERIAL_COLS if c not in raw.columns]
+                if missing:
+                    st.error(
+                        "A aba Demanda_Projeto não possui todas as colunas esperadas: "
+                        + ", ".join(missing)
                     )
-                    st.success("MRP Consulta processada.")
-                    st.rerun()
+                else:
+                    preview = raw[MATERIAL_COLS].head(20)
+                    st.dataframe(preview, use_container_width=True, hide_index=True)
+                    st.caption(
+                        f"{len(raw)} linha(s) encontradas. Nenhum cálculo será aplicado aos dados da aba."
+                    )
+                    if st.button("Carregar Demanda_Projeto", type="primary"):
+                        import_materials(raw)
+                        st.success(
+                            "Aba Demanda_Projeto carregada. A quantidade de itens pendentes por OP foi atualizada."
+                        )
+                        st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
             except Exception as exc:
                 st.exception(exc)
 
