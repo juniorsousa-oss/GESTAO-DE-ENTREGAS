@@ -408,15 +408,16 @@ def import_materials(raw):
 
 
 def total_items_by_op(materials=None):
+    summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
+    if isinstance(summary, pd.DataFrame) and not summary.empty:
+        return {
+            normalize_op(r.get("projeto")): int(r.get("qtd_itens_pendentes", 0) or 0)
+            for _, r in summary.iterrows()
+            if normalize_op(r.get("projeto"))
+        }
+
     materials = st.session_state.materials if materials is None else materials
     if not isinstance(materials, pd.DataFrame) or materials.empty:
-        summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
-        if isinstance(summary, pd.DataFrame) and not summary.empty:
-            return {
-                normalize_op(r.get("projeto")): int(r.get("qtd_itens_pendentes", 0) or 0)
-                for _, r in summary.iterrows()
-                if normalize_op(r.get("projeto"))
-            }
         return {}
     required = {"Projeto", "Produto"}
     if not required.issubset(materials.columns):
@@ -433,15 +434,16 @@ def total_items_by_op(materials=None):
 
 
 def pending_items_by_op(materials=None):
+    summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
+    if isinstance(summary, pd.DataFrame) and not summary.empty:
+        return {
+            normalize_op(r.get("projeto")): int(r.get("pendencias_com_saldo", 0) or 0)
+            for _, r in summary.iterrows()
+            if normalize_op(r.get("projeto"))
+        }
+
     materials = st.session_state.materials if materials is None else materials
     if not isinstance(materials, pd.DataFrame) or materials.empty:
-        summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
-        if isinstance(summary, pd.DataFrame) and not summary.empty:
-            return {
-                normalize_op(r.get("projeto")): int(r.get("pendencias_com_saldo", 0) or 0)
-                for _, r in summary.iterrows()
-                if normalize_op(r.get("projeto"))
-            }
         return {}
     required = {"Projeto", "Produto", "Condição de pendência"}
     if not required.issubset(materials.columns):
