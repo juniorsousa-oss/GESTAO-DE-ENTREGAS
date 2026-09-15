@@ -51,6 +51,7 @@ def _supabase_api(action, payload=None, timeout=45):
     direct_rpc = {
         "list_current": "entrega_listar_cronograma",
         "list_imports": "entrega_listar_importacoes",
+        "load_materials": "entrega_listar_mrp_atual",
     }
     if action in direct_rpc:
         rpc_url = f"https://cuixazpxkvniqldmmnth.supabase.co/rest/v1/rpc/{direct_rpc[action]}"
@@ -144,6 +145,36 @@ def _sync_current_from_supabase(force=False):
 
 
 _sync_current_from_supabase()
+
+
+def _sync_materials_from_supabase(force=False):
+    if not _supabase_anon_key():
+        return False
+    if st.session_state.get("_entrega_mrp_sync") and not force:
+        return True
+
+    try:
+        result = _supabase_api("load_materials", timeout=45)
+        payload = result.get("data") or {}
+        rows = payload.get("dados") or [] if isinstance(payload, dict) else []
+        if rows:
+            st.session_state["materials"] = pd.DataFrame(rows)
+        elif "materials" not in st.session_state:
+            st.session_state["materials"] = pd.DataFrame()
+        if isinstance(payload, dict):
+            st.session_state["_entrega_mrp_meta"] = {
+                "arquivo_nome": payload.get("arquivo_nome"),
+                "qtd_linhas": payload.get("qtd_linhas", 0),
+                "atualizado_em": payload.get("atualizado_em"),
+            }
+        st.session_state["_entrega_mrp_sync"] = True
+        return True
+    except Exception as exc:
+        st.session_state["_entrega_mrp_sync_error"] = str(exc)
+        return False
+
+
+_sync_materials_from_supabase()
 
 _original_markdown = st.markdown
 

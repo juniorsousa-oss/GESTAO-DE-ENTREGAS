@@ -1,5 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import json
 
 import pandas as pd
 import streamlit as st
@@ -397,6 +398,7 @@ def import_materials(raw):
     data_vencida = data_cm.notna() & data_cm.map(lambda d: d < today() if d is not None and not pd.isna(d) else False)
     base["Condição de pendência"] = (data_vencida & atendimento_estoque).map({True: "SIM", False: "NÃO"})
     st.session_state.materials = base
+    return base
 
 
 def pending_items_by_op(materials=None):
@@ -429,7 +431,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 19")
+    st.caption("APP core build 20")
 
 
 if page == "Dashboard":
@@ -850,6 +852,10 @@ elif page == "Cronograma":
 elif page == "Materiais":
     tab_list, tab_import = st.tabs(["Demanda por projeto", "Importar MRP Consulta"])
 
+    mrp_success = st.session_state.pop("_mrp_success", None)
+    if mrp_success:
+        st.success(mrp_success)
+
     with tab_list:
         materials = st.session_state.materials.copy()
         if materials.empty:
@@ -895,12 +901,33 @@ elif page == "Materiais":
                     st.caption(
                         f"{len(raw)} linha(s) encontradas. Nenhum cálculo será aplicado aos dados da aba."
                     )
-                    if st.button("Carregar Demanda_Projeto", type="primary"):
-                        import_materials(raw)
-                        st.success(
-                            "Aba Demanda_Projeto carregada. A Condição de pendência e a quantidade de itens pendentes por OP foram atualizadas."
-                        )
-                        st.rerun()
+                    if st.button("Salvar carga MRP", type="primary"):
+                        if "_supabase_api" not in globals():
+                            st.error("Conexão com o Supabase indisponível. O MRP não foi salvo.")
+                        else:
+                            try:
+                                base = import_materials(raw)
+                                rows_payload = json.loads(
+                                    base.to_json(orient="records", date_format="iso", force_ascii=False)
+                                )
+                                result = _supabase_api(
+                                    "save_materials",
+                                    {
+                                        "arquivo_nome": uploaded_mrp.name,
+                                        "rows": rows_payload,
+                                    },
+                                    timeout=90,
+                                )
+                                st.session_state["_entrega_mrp_sync"] = False
+                                if "_sync_materials_from_supabase" in globals():
+                                    _sync_materials_from_supabase(force=True)
+                                st.session_state["_mrp_success"] = (
+                                    f"MRP salvo no Supabase com {int(result.get('linhas', len(base)))} linha(s). "
+                                    "Esta carga será restaurada automaticamente ao abrir o app."
+                                )
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"O MRP não foi salvo no Supabase: {exc}")
             except ValueError as exc:
                 st.error(str(exc))
             except Exception as exc:
