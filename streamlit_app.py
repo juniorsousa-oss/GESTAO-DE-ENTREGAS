@@ -325,12 +325,17 @@ def _sync_materials_from_supabase(force=False):
         rows = payload.get("dados") or [] if isinstance(payload, dict) else []
         if rows:
             materials_df = pd.DataFrame(rows)
+            legacy_situation_col = "Situação " + "Entrega"
+            if "Situação Separação" not in materials_df.columns and legacy_situation_col in materials_df.columns:
+                materials_df = materials_df.rename(columns={legacy_situation_col: "Situação Separação"})
+            if "Situação Separação" in materials_df.columns:
+                materials_df["Situação Separação"] = materials_df["Situação Separação"].map(_normalize_delivery_state)
             material_order = [
                 "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
                 "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
                 "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação",
                 "Contexto Projeto", "Contexto Parte 1", "Contexto Parte 2",
-                "Status Projeto", "Situação Entrega", "Condição de pendência",
+                "Status Projeto", "Situação Separação", "Condição de pendência",
             ]
             ordered_cols = [c for c in material_order if c in materials_df.columns]
             extra_cols = [c for c in materials_df.columns if c not in ordered_cols]
@@ -1374,7 +1379,7 @@ MATERIAL_COLS = [
 ]
 MRP_CONTEXT_COLS = [
     "Contexto Projeto", "Contexto Parte 1", "Contexto Parte 2",
-    "Status Projeto", "Situação Entrega", "Condição de pendência",
+    "Status Projeto", "Situação Separação", "Condição de pendência",
 ]
 SPECIAL_PROJECT_STATUSES = {"SUSPENSO", "CANCELADO", "RESÍDUO"}
 NF_REQUIRED_COLS = [
@@ -1762,7 +1767,13 @@ def _normalize_project_status(value):
 def _normalize_delivery_state(value):
     value = str(value or "").strip().upper()
     aliases = {
-        "NAO POSSUI ENTREGA": "NÃO POSSUI ENTREGA",
+        "POSSUI ENTREGA": "POSSUI SEPARAÇÃO",
+        "POSSUI SEPARACAO": "POSSUI SEPARAÇÃO",
+        "NAO POSSUI ENTREGA": "NÃO POSSUI SEPARAÇÃO",
+        "NÃO POSSUI ENTREGA": "NÃO POSSUI SEPARAÇÃO",
+        "NAO POSSUI SEPARAÇÃO": "NÃO POSSUI SEPARAÇÃO",
+        "NAO POSSUI SEPARACAO": "NÃO POSSUI SEPARAÇÃO",
+        "NÃO POSSUI SEPARACAO": "NÃO POSSUI SEPARAÇÃO",
     }
     return aliases.get(value, value)
 
@@ -1783,7 +1794,7 @@ def import_materials(raw):
     if raw.shape[1] < 15:
         raise ValueError(
             "A aba Demanda_Projeto precisa possuir a coluna O com o contexto do projeto "
-            "no formato: DATA MRP | CM | STATUS | POSSUI/NÃO POSSUI ENTREGA."
+            "no formato: DATA MRP | CM | STATUS | POSSUI/NÃO POSSUI SEPARAÇÃO."
         )
 
     base = raw[MATERIAL_COLS].copy().reset_index(drop=True)
@@ -1793,11 +1804,11 @@ def import_materials(raw):
     base["Contexto Parte 1"] = parsed.map(lambda x: x[1])
     base["Contexto Parte 2"] = parsed.map(lambda x: x[2])
     base["Status Projeto"] = parsed.map(lambda x: x[3])
-    base["Situação Entrega"] = parsed.map(lambda x: x[4])
+    base["Situação Separação"] = parsed.map(lambda x: x[4])
 
     data_cm = pd.to_datetime(base["Data CM"], errors="coerce", dayfirst=True).dt.date
     atendimento_estoque = base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
-    possui_entrega = base["Situação Entrega"].eq("POSSUI ENTREGA")
+    possui_entrega = base["Situação Separação"].eq("POSSUI SEPARAÇÃO")
     data_valida = data_cm.notna()
     cond_data = data_valida & (
         data_cm.map(lambda d: d < today() if d is not None and not pd.isna(d) else False)
@@ -1982,7 +1993,7 @@ def _mrp_summary_maps():
             status_value = _normalize_project_status(r.get("status_projeto"))
             delivery_value = _normalize_delivery_state(r.get("situacao_entrega"))
             status_map[op] = status_value
-            delivery_map[op] = bool(r.get("possui_entrega", False)) or delivery_value == "POSSUI ENTREGA"
+            delivery_map[op] = bool(r.get("possui_entrega", False)) or delivery_value == "POSSUI SEPARAÇÃO"
             context_map[op] = bool(status_value or delivery_value or str(r.get("contexto_raw") or "").strip())
             try:
                 raw_count_map[op] = int(r.get("qtd_itens_mrp", 0) or 0)
@@ -2003,7 +2014,7 @@ def apply_operational_statuses(schedule, total_item_map):
     result["status_projeto_mrp"] = result["op"].astype(str).map(status_map).fillna("")
     result["possui_entrega"] = result["op"].astype(str).map(delivery_map).fillna(False).astype(bool)
     result["contexto_mrp_disponivel"] = result["op"].astype(str).map(context_map).fillna(False).astype(bool)
-    result["situacao_entrega"] = result.apply(lambda r: ("POSSUI ENTREGA" if bool(r["possui_entrega"]) else "NÃO POSSUI ENTREGA") if bool(r["contexto_mrp_disponivel"]) else "AGUARDANDO NOVA CARGA MRP", axis=1)
+    result["situacao_entrega"] = result.apply(lambda r: ("POSSUI SEPARAÇÃO" if bool(r["possui_entrega"]) else "NÃO POSSUI SEPARAÇÃO") if bool(r["contexto_mrp_disponivel"]) else "AGUARDANDO NOVA CARGA MRP", axis=1)
 
     if "alerta_status_especial" not in result.columns:
         result["alerta_status_especial"] = result["status_projeto_mrp"].isin(SPECIAL_PROJECT_STATUSES)
@@ -2334,7 +2345,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 56
+            <b>Build</b><br>APP core build 57
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2497,7 +2508,7 @@ if page == "Dashboard":
                 "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
                 "sinalizacao": "Sinalização",
                 "status_projeto_mrp": "Status MRP",
-                "situacao_entrega": "Situação entrega",
+                "situacao_entrega": "Situação separação",
                 "motivo_alerta": "Motivo / atenção",
             },
         )
@@ -2612,7 +2623,7 @@ elif page == "Cronograma":
                     "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
                     "sinalizacao": "Sinalização",
                     "status_projeto_mrp": "Status MRP",
-                    "situacao_entrega": "Situação entrega",
+                    "situacao_entrega": "Situação separação",
                     "motivo_alerta": "Motivo / atenção",
                     "tratativa_pcp": "Tratativa PCP",
                     "ultimo_comentario": "Último comentário",
@@ -2697,7 +2708,7 @@ elif page == "Cronograma":
                         st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
 
                 if priority_blocked:
-                    st.caption(f"{priority_blocked} OP(s) selecionada(s) não podem receber prioridade por não possuírem itens elegíveis ou estarem em condição especial/entrega já registrada.")
+                    st.caption(f"{priority_blocked} OP(s) selecionada(s) não podem receber prioridade por não possuírem itens elegíveis ou estarem em condição especial/separação já registrada.")
                 if manual_blocked:
                     st.caption(f"{manual_blocked} OP(s) não podem receber uma alteração operacional padrão nas condições atuais.")
 
@@ -2764,7 +2775,7 @@ elif page == "Cronograma":
                 )
                 do_comment = a2.checkbox("Adicionar comentário", key=f"chk_comment_{op_selected}")
                 if not can_change_status:
-                    a1.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI ENTREGA.")
+                    a1.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI SEPARAÇÃO.")
 
                 responsible = st.text_input(
                     "Responsável",
@@ -3771,13 +3782,13 @@ def _render_mrp_feed():
                     + ", ".join(missing)
                 )
             elif raw.shape[1] < 15:
-                st.error("A aba Demanda_Projeto precisa possuir a coluna O com status do projeto e situação de entrega.")
+                st.error("A aba Demanda_Projeto precisa possuir a coluna O com status do projeto e situação de separação.")
             else:
                 context_col = raw.columns[14]
                 preview = raw[MATERIAL_COLS + [context_col]].head(20)
                 st.dataframe(preview, use_container_width=True, hide_index=True)
                 st.caption(
-                    f"{len(raw)} linha(s) encontradas. A coluna O será preservada e dividida em contexto, status do projeto e situação de entrega."
+                    f"{len(raw)} linha(s) encontradas. A coluna O será preservada e dividida em contexto, status do projeto e situação de separação."
                 )
                 if st.button("Salvar carga MRP", type="primary"):
                     if "_supabase_api" not in globals():
@@ -4314,4 +4325,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 14")
+st.sidebar.caption("UI build 15")
