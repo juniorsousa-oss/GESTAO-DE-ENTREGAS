@@ -1415,6 +1415,36 @@ def today():
     return now().date()
 
 
+# Formatadores usados por telas renderizadas antes do bloco de alimentação.
+# Mantidos aqui para evitar NameError durante a execução top-down do Streamlit.
+def _fmt_feed_datetime(value):
+    if not value:
+        return ""
+    try:
+        ts = pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.isna(ts):
+            return ""
+        try:
+            ts = ts.tz_convert(TZ)
+        except Exception:
+            pass
+        return ts.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return ""
+
+
+def _fmt_feed_date(value):
+    if not value:
+        return ""
+    try:
+        d = pd.to_datetime(value, errors="coerce")
+        if pd.isna(d):
+            return ""
+        return d.strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
 def normalize_op(value):
     if pd.isna(value):
         return ""
@@ -4325,4 +4355,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 15")
+st.sidebar.caption("UI build 16")
