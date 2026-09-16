@@ -440,7 +440,14 @@ def _markdown_ui(body, *args, **kwargs):
               gap: .34rem;
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"] {
+          section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
+          section[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] + div {
+              position: absolute !important;
+              opacity: 0 !important;
+              pointer-events: none !important;
+          }
+
+          section[data-testid="stSidebar"] div[role="radiogroup"] label {
               position: relative;
               width: 100%;
               min-height: 42px;
@@ -456,7 +463,7 @@ def _markdown_ui(body, *args, **kwargs):
               box-sizing: border-box;
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
+          section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
               position: absolute !important;
               opacity: 0 !important;
               width: 0 !important;
@@ -464,7 +471,7 @@ def _markdown_ui(body, *args, **kwargs):
               overflow: hidden !important;
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"] p {
+          section[data-testid="stSidebar"] div[role="radiogroup"] label p {
               margin: 0 !important;
               font-size: .83rem !important;
               font-weight: 600 !important;
@@ -472,19 +479,19 @@ def _markdown_ui(body, *args, **kwargs):
               line-height: 1.2 !important;
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"]:hover {
+          section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
               background: #f8fafc;
               border-color: #e5e7eb;
               transform: translateX(1px);
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
+          section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
               background: #111827 !important;
               border-color: #111827 !important;
               box-shadow: 0 5px 14px rgba(17, 24, 39, .14);
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked)::before {
+          section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)::before {
               content: "";
               position: absolute;
               left: .42rem;
@@ -496,7 +503,7 @@ def _markdown_ui(body, *args, **kwargs):
               transform: translateY(-50%);
           }
 
-          section[data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) p {
+          section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
               color: #ffffff !important;
               font-weight: 700 !important;
           }
@@ -1448,6 +1455,9 @@ def _logo_admin_password_valid(candidate):
     candidate_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
     return hmac.compare_digest(candidate_hash, fallback_hash)
 
+if st.session_state.pop("_clear_logo_admin_password", False):
+    st.session_state.pop("_logo_admin_password_input", None)
+
 with st.sidebar:
     st.markdown(
         '''<div class="sidebar-brand">
@@ -1496,7 +1506,7 @@ with st.sidebar:
         ):
             if _logo_admin_password_valid(senha_logo):
                 st.session_state["_logo_admin_unlocked"] = True
-                st.session_state["_logo_admin_password_input"] = ""
+                st.session_state["_clear_logo_admin_password"] = True
                 st.rerun()
             else:
                 st.error("Senha administrativa inválida.")
@@ -1570,7 +1580,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 42
+            <b>Build</b><br>APP core build 43
         </div>''',
         unsafe_allow_html=True,
     )
