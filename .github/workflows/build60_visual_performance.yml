@@ -1,0 +1,32 @@
+name: Build 60 - visual and performance
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build60_visual_performance.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/build60_visual_performance.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 60: simplify views and optimize performance"
+          git push
