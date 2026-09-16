@@ -59,9 +59,10 @@ def _supabase_api(action, payload=None, timeout=45):
         "list_daily_alerts": "entrega_listar_alertas_diarios",
         "save_logo": "entrega_salvar_logo",
         "load_nf_summary": "entrega_nf_resumo",
-        "load_nfs": "entrega_listar_nf_atual",
+        "load_nf_filters": "entrega_nf_filtros",
+        "load_nfs": "entrega_listar_nf_filtrada",
         "save_nfs": "entrega_salvar_nf_atual",
-        "export_nfs": "entrega_exportar_nf_atual",
+        "export_nfs": "entrega_exportar_nf_atual_v2",
         "load_feed_status": "entrega_cargas_resumo",
     }
     if action in direct_rpc:
@@ -76,10 +77,14 @@ def _supabase_api(action, payload=None, timeout=45):
         elif action == "load_nfs":
             source = payload or {}
             rpc_payload = {
-                "p_limit": int(source.get("limit", 500) or 500),
-                "p_offset": int(source.get("offset", 0) or 0),
+                "p_limit": int(source.get("limit", 50000) or 50000),
                 "p_classificacao": source.get("classificacao") or None,
-                "p_busca": source.get("busca") or None,
+                "p_data": source.get("data") or None,
+                "p_natureza": source.get("natureza") or None,
+                "p_documento": source.get("documento") or None,
+                "p_fornecedor": source.get("fornecedor") or None,
+                "p_codigo": source.get("codigo") or None,
+                "p_produto": source.get("produto") or None,
             }
         elif action == "save_nfs":
             source = payload or {}
@@ -1376,7 +1381,7 @@ NF_REQUIRED_COLS = [
     "DIGITACAO", "DOCUMENTO", "NOME", "C.R.", "NATUREZA",
     "CODIGO", "PRODUTO", "QUANT", "TES",
 ]
-NF_OUTPUT_COLS = ["Classificação", "Documento", "Fornecedor", "Código", "Produto", "QNT", "Natureza"]
+NF_OUTPUT_COLS = ["Classificação", "Digitação", "Documento", "Fornecedor", "Código", "Produto", "QNT", "Natureza"]
 
 st.markdown(
     """
@@ -1834,9 +1839,11 @@ def processar_nf_bruto(raw):
     tes = _nf_text(raw["TES"])
     cr = _nf_text(raw["C.R."]).str.replace(r"\.0$", "", regex=True)
     quant = raw["QUANT"].map(_nf_number)
+    digitacao = pd.to_datetime(raw["DIGITACAO"], errors="coerce", dayfirst=True).dt.date
 
     base = pd.DataFrame({
         "Classificação": tes.map(lambda v: "LANÇADA" if bool(re.fullmatch(r"\d{3}", v)) else "PRÉ NOTA"),
+        "Digitação": digitacao,
         "Documento": _nf_text(raw["DOCUMENTO"]),
         "Fornecedor": _nf_text(raw["NOME"]),
         "Código": _nf_text(raw["CODIGO"]),
@@ -1845,7 +1852,7 @@ def processar_nf_bruto(raw):
         "Natureza": _nf_text(raw["NATUREZA"]),
     })
 
-    key_cols = ["Classificação", "Documento", "Fornecedor", "Código", "Produto", "Natureza"]
+    key_cols = ["Classificação", "Digitação", "Documento", "Fornecedor", "Código", "Produto", "Natureza"]
     treated = (
         base.groupby(key_cols, as_index=False, sort=False, dropna=False)["QNT"]
         .sum()
@@ -1868,6 +1875,7 @@ def processar_nf_bruto(raw):
 def _nf_payload_rows(df):
     renamed = df.rename(columns={
         "Classificação": "classificacao",
+        "Digitação": "digitacao",
         "Documento": "documento",
         "Fornecedor": "fornecedor",
         "Código": "codigo",
@@ -1875,6 +1883,10 @@ def _nf_payload_rows(df):
         "QNT": "qnt",
         "Natureza": "natureza",
     })
+    if "digitacao" in renamed.columns:
+        digitacao = pd.to_datetime(renamed["digitacao"], errors="coerce")
+        renamed["digitacao"] = digitacao.dt.strftime("%Y-%m-%d")
+        renamed.loc[digitacao.isna(), "digitacao"] = None
     return json.loads(renamed.to_json(orient="records", force_ascii=False))
 
 
@@ -1884,6 +1896,7 @@ def _nf_rows_to_frame(rows):
         return pd.DataFrame(columns=NF_OUTPUT_COLS)
     frame = frame.rename(columns={
         "classificacao": "Classificação",
+        "digitacao": "Digitação",
         "documento": "Documento",
         "fornecedor": "Fornecedor",
         "codigo": "Código",
@@ -1897,6 +1910,7 @@ def _nf_rows_to_frame(rows):
         if col not in frame.columns:
             frame[col] = 0 if col == "QNT" else ""
     frame["QNT"] = pd.to_numeric(frame["QNT"], errors="coerce").fillna(0)
+    frame["Digitação"] = pd.to_datetime(frame["Digitação"], errors="coerce").dt.date
     return frame[NF_OUTPUT_COLS]
 
 def total_items_by_op(materials=None):
@@ -2320,7 +2334,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 55
+            <b>Build</b><br>APP core build 56
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2504,19 +2518,47 @@ elif page == "Cronograma":
         if schedule.empty:
             st.info("Nenhuma OP com Data de Separação carregada.")
         else:
-            f1, f2, f3 = st.columns([1.7, 1, 1])
+            operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])].copy()
+
+            actual_statuses = set(operational_schedule["status"].dropna().astype(str).tolist())
+            status_options = [x for x in CRONOGRAMA_STATUS if x in actual_statuses]
+            status_options += sorted(actual_statuses - set(status_options))
+
+            date_options = (
+                pd.to_datetime(operational_schedule["data_separacao"], errors="coerce")
+                .dropna().dt.date.drop_duplicates().sort_values().tolist()
+            )
+            priority_values = operational_schedule["prioridade_solicitada"].fillna(False).astype(bool)
+            priority_options = ["Todos"]
+            if bool(priority_values.any()):
+                priority_options.append(PRIORITY_STATUS)
+            if bool((~priority_values).any()):
+                priority_options.append("Sem prioridade")
+
+            f1, f2, f3, f4 = st.columns([1.55, 1, 1, 1])
             search = f1.text_input("Buscar OP / cliente / produto")
-            status_filter = f2.multiselect("Status", CRONOGRAMA_STATUS, default=CRONOGRAMA_STATUS)
-            priority_filter = f3.selectbox(
+            status_filter = f2.multiselect("Status", status_options, default=status_options)
+            date_filter = f3.selectbox(
+                "Data de Separação",
+                [None] + date_options,
+                index=0,
+                format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+                key="cronograma_data_filtro",
+            )
+            priority_filter = f4.selectbox(
                 "Prioridade",
-                ["Todos", "Somente prioridade", "Sem prioridade"],
+                priority_options,
                 index=0,
                 key="cronograma_prioridade_filtro",
             )
 
-            operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])].copy()
-            view = operational_schedule[operational_schedule["status"].isin(status_filter)].copy()
-            if priority_filter == "Somente prioridade":
+            view = operational_schedule.copy()
+            if status_filter:
+                view = view[view["status"].isin(status_filter)]
+            if date_filter is not None:
+                view_dates = pd.to_datetime(view["data_separacao"], errors="coerce").dt.date
+                view = view[view_dates == date_filter]
+            if priority_filter == PRIORITY_STATUS:
                 view = view[view["prioridade_solicitada"].fillna(False).astype(bool)]
             elif priority_filter == "Sem prioridade":
                 view = view[~view["prioridade_solicitada"].fillna(False).astype(bool)]
@@ -2964,16 +3006,15 @@ elif page == "Materiais":
             st.info("Nenhuma aba Demanda_Projeto carregada.")
         else:
             f_pendencia, f_projeto, f_prioridade = st.columns([1, 2.0, 1.15])
+            pendencia_values = set(
+                materials.get("Condição de pendência", pd.Series(dtype=str))
+                .fillna("").astype(str).str.upper().tolist()
+            )
+            pendencia_options = ["Todos"] + [x for x in ["SIM", "NÃO"] if x in pendencia_values]
             pendencia_filtro = f_pendencia.selectbox(
                 "Condição de pendência",
-                ["Todos", "SIM", "NÃO"],
+                pendencia_options,
                 index=0,
-            )
-            prioridade_material_filtro = f_prioridade.selectbox(
-                "Prioridade",
-                ["Todos", "Somente prioridade", "Sem prioridade"],
-                index=0,
-                key="materiais_prioridade_filtro",
             )
 
             view = materials.copy()
@@ -3004,6 +3045,32 @@ elif page == "Materiais":
                 view = view[
                     view["Projeto"].map(normalize_op).eq(projeto_filtro)
                 ]
+
+            priority_ops_df = st.session_state.get("_entrega_mrp_ops", pd.DataFrame())
+            priority_keys = set()
+            if isinstance(priority_ops_df, pd.DataFrame) and not priority_ops_df.empty:
+                priority_rows = priority_ops_df[priority_ops_df["status"].astype(str).eq(PRIORITY_STATUS)]
+                priority_keys = {
+                    (normalize_op(r.get("projeto")), normalize_op(r.get("produto")))
+                    for _, r in priority_rows.iterrows()
+                }
+            current_keys = [
+                (normalize_op(r.get("Projeto")), normalize_op(r.get("Produto")))
+                for _, r in view.iterrows()
+            ]
+            has_priority = any(k in priority_keys for k in current_keys)
+            has_nonpriority = any(k not in priority_keys for k in current_keys)
+            prioridade_options = ["Todos"]
+            if has_priority:
+                prioridade_options.append(PRIORITY_STATUS)
+            if has_nonpriority:
+                prioridade_options.append("Sem prioridade")
+            prioridade_material_filtro = f_prioridade.selectbox(
+                "Prioridade",
+                prioridade_options,
+                index=0,
+                key="materiais_prioridade_filtro",
+            )
 
             # Vincula o andamento operacional sem alterar a base original do MRP.
             ops_df = st.session_state.get("_entrega_mrp_ops", pd.DataFrame())
@@ -3045,7 +3112,7 @@ elif page == "Materiais":
 
             view["Prioridade solicitada"] = view["Status separação"].astype(str).eq(PRIORITY_STATUS)
             view["Sinalização"] = view["Prioridade solicitada"].map(lambda v: "🟣 PRIORIDADE" if bool(v) else "")
-            if prioridade_material_filtro == "Somente prioridade":
+            if prioridade_material_filtro == PRIORITY_STATUS:
                 view = view[view["Prioridade solicitada"]].copy()
             elif prioridade_material_filtro == "Sem prioridade":
                 view = view[~view["Prioridade solicitada"]].copy()
@@ -3239,159 +3306,139 @@ elif page == "NFs":
     if nf_success:
         st.success(nf_success)
 
-    tab_nf_base = st.container()
+    nf_meta = {}
+    try:
+        meta_rows = _supabase_api("load_nf_summary", timeout=20).get("data") or []
+        if isinstance(meta_rows, list) and meta_rows:
+            nf_meta = meta_rows[0]
+        elif isinstance(meta_rows, dict):
+            nf_meta = meta_rows
+    except Exception as exc:
+        st.warning(f"Não foi possível consultar o resumo de NFs: {exc}")
 
-    with tab_nf_base:
-        nf_meta = {}
-        if "_supabase_api" in globals():
-            try:
-                meta_rows = _supabase_api("load_nf_summary", timeout=20).get("data") or []
-                if isinstance(meta_rows, list) and meta_rows:
-                    nf_meta = meta_rows[0]
-                elif isinstance(meta_rows, dict):
-                    nf_meta = meta_rows
-            except Exception as exc:
-                st.warning(f"Não foi possível consultar o resumo de NFs: {exc}")
+    if not nf_meta:
+        st.info("Ainda não existe uma base de NFs salva. Utilize Histórico > Alimentação > NFs para realizar a primeira carga.")
+    else:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Linhas tratadas", int(nf_meta.get("qtd_linhas_tratadas", 0) or 0))
+        m2.metric("Lançadas", int(nf_meta.get("qtd_lancadas", 0) or 0))
+        m3.metric("Pré notas", int(nf_meta.get("qtd_pre_notas", 0) or 0))
+        m4.metric(
+            "Linhas consolidadas",
+            max(int(nf_meta.get("qtd_linhas_brutas", 0) or 0) - int(nf_meta.get("qtd_linhas_tratadas", 0) or 0), 0),
+        )
 
-        if not nf_meta:
-            st.info("Ainda não existe uma base de NFs salva. Utilize a aba Importar relatório para realizar a primeira carga.")
+        atualizado = nf_meta.get("atualizado_em")
+        atualizado_txt = _fmt_feed_datetime(atualizado) if atualizado else ""
+        st.caption(
+            f"Arquivo atual: {nf_meta.get('arquivo_nome') or '—'}"
+            + (f" • Atualizado em: {atualizado_txt}" if atualizado_txt else "")
+        )
+
+        nf_filter_meta = {}
+        try:
+            nf_filter_meta = _supabase_api("load_nf_filters", timeout=20).get("data") or {}
+            if isinstance(nf_filter_meta, list) and len(nf_filter_meta) == 1 and isinstance(nf_filter_meta[0], dict):
+                nf_filter_meta = nf_filter_meta[0]
+            if not isinstance(nf_filter_meta, dict):
+                nf_filter_meta = {}
+        except Exception as exc:
+            st.warning(f"Não foi possível carregar as opções de filtro das NFs: {exc}")
+
+        class_options = ["Todos"] + [str(v) for v in (nf_filter_meta.get("classificacoes") or []) if str(v).strip()]
+        nature_options = ["Todos"] + [str(v) for v in (nf_filter_meta.get("naturezas") or []) if str(v).strip()]
+        nf_dates = []
+        for value in nf_filter_meta.get("datas") or []:
+            dt = pd.to_datetime(value, errors="coerce")
+            if not pd.isna(dt):
+                nf_dates.append(dt.date())
+
+        f1, f2, f3 = st.columns([1, 1, 1.5])
+        nf_class_filter = f1.selectbox(
+            "Classificação", class_options, index=0, key="nf_class_filter"
+        )
+        nf_date_filter = f2.selectbox(
+            "Data",
+            [None] + nf_dates,
+            index=0,
+            format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+            key="nf_date_filter",
+        )
+        nf_nature_filter = f3.selectbox(
+            "Natureza", nature_options, index=0, key="nf_nature_filter"
+        )
+
+        f4, f5, f6, f7 = st.columns(4)
+        nf_documento = f4.text_input("Documento", key="nf_documento_filter")
+        nf_fornecedor = f5.text_input("Fornecedor", key="nf_fornecedor_filter")
+        nf_codigo = f6.text_input("Código", key="nf_codigo_filter")
+        nf_produto = f7.text_input("Produto", key="nf_produto_filter")
+
+        rows_nf = []
+        total_nf = 0
+        try:
+            rows_nf = _supabase_api(
+                "load_nfs",
+                {
+                    "limit": 50000,
+                    "classificacao": None if nf_class_filter == "Todos" else nf_class_filter,
+                    "data": nf_date_filter.isoformat() if nf_date_filter is not None else None,
+                    "natureza": None if nf_nature_filter == "Todos" else nf_nature_filter,
+                    "documento": nf_documento.strip() or None,
+                    "fornecedor": nf_fornecedor.strip() or None,
+                    "codigo": nf_codigo.strip() or None,
+                    "produto": nf_produto.strip() or None,
+                },
+                timeout=45,
+            ).get("data") or []
+            if rows_nf:
+                total_nf = int(rows_nf[0].get("total_count", len(rows_nf)) or len(rows_nf))
+        except Exception as exc:
+            st.error(f"Não foi possível carregar a base tratada de NFs: {exc}")
+
+        nf_view = _nf_rows_to_frame(rows_nf)
+        st.caption(f"{total_nf} registro(s) encontrado(s).")
+        if nf_view.empty:
+            st.info("Nenhum registro encontrado para os filtros selecionados.")
         else:
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Linhas tratadas", int(nf_meta.get("qtd_linhas_tratadas", 0) or 0))
-            m2.metric("Lançadas", int(nf_meta.get("qtd_lancadas", 0) or 0))
-            m3.metric("Pré notas", int(nf_meta.get("qtd_pre_notas", 0) or 0))
-            m4.metric(
-                "Linhas consolidadas",
-                max(
-                    int(nf_meta.get("qtd_linhas_brutas", 0) or 0)
-                    - int(nf_meta.get("qtd_linhas_tratadas", 0) or 0),
-                    0,
-                ),
+            st.dataframe(
+                nf_view,
+                use_container_width=True,
+                hide_index=True,
+                height=560,
+                column_config={
+                    "Classificação": "Classificação",
+                    "Digitação": st.column_config.DateColumn("Digitação", format="DD/MM/YYYY"),
+                    "Documento": "Documento",
+                    "Fornecedor": "Fornecedor",
+                    "Código": "Código",
+                    "Produto": "Produto",
+                    "QNT": st.column_config.NumberColumn("QNT"),
+                    "Natureza": "Natureza",
+                },
             )
 
-            atualizado = nf_meta.get("atualizado_em")
-            atualizado_txt = ""
-            if atualizado:
-                try:
-                    atualizado_dt = pd.to_datetime(atualizado, errors="coerce")
-                    if not pd.isna(atualizado_dt):
-                        atualizado_txt = atualizado_dt.strftime("%d/%m/%Y %H:%M")
-                except Exception:
-                    atualizado_txt = str(atualizado)
-            st.caption(
-                f"Arquivo atual: {nf_meta.get('arquivo_nome') or '—'}"
-                + (f" • Atualizado em: {atualizado_txt}" if atualizado_txt else "")
-            )
-
-            f1, f2 = st.columns([1, 2.4])
-            nf_class_filter = f1.selectbox(
-                "Classificação",
-                ["Todos", "LANÇADA", "PRÉ NOTA"],
-                index=0,
-                key="nf_class_filter",
-            )
-            nf_search = f2.text_input(
-                "Buscar Documento / Fornecedor / Código / Produto / Natureza",
-                key="nf_search",
-            )
-
-            page_size = 500
-            class_arg = None if nf_class_filter == "Todos" else nf_class_filter
-            rows_first = []
-            total_nf = 0
+        if st.button("Preparar exportação completa em Excel", key="nf_prepare_export"):
             try:
-                rows_first = _supabase_api(
-                    "load_nfs",
-                    {
-                        "limit": page_size,
-                        "offset": 0,
-                        "classificacao": class_arg,
-                        "busca": nf_search.strip() or None,
-                    },
-                    timeout=30,
-                ).get("data") or []
-                if rows_first:
-                    total_nf = int(rows_first[0].get("total_count", len(rows_first)) or len(rows_first))
+                export_rows = _supabase_api("export_nfs", timeout=60).get("data") or []
+                export_df = _nf_rows_to_frame(export_rows)
+                excel_buffer = BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                    export_df.to_excel(writer, sheet_name="NFs", index=False)
+                st.session_state["_nf_export_bytes"] = excel_buffer.getvalue()
+                st.session_state["_nf_export_name"] = f"base_nfs_{today().strftime('%Y%m%d')}.xlsx"
             except Exception as exc:
-                st.error(f"Não foi possível carregar a base tratada de NFs: {exc}")
+                st.error(f"Não foi possível preparar a exportação: {exc}")
 
-            total_pages = max(1, (total_nf + page_size - 1) // page_size)
-            page_number = 1
-            if total_pages > 1:
-                page_number = int(
-                    st.number_input(
-                        "Página",
-                        min_value=1,
-                        max_value=total_pages,
-                        value=1,
-                        step=1,
-                        key="nf_page_number",
-                    )
-                )
-
-            rows_page = rows_first
-            if page_number > 1:
-                try:
-                    rows_page = _supabase_api(
-                        "load_nfs",
-                        {
-                            "limit": page_size,
-                            "offset": (page_number - 1) * page_size,
-                            "classificacao": class_arg,
-                            "busca": nf_search.strip() or None,
-                        },
-                        timeout=30,
-                    ).get("data") or []
-                except Exception as exc:
-                    st.error(f"Não foi possível carregar a página de NFs: {exc}")
-                    rows_page = []
-
-            nf_view = _nf_rows_to_frame(rows_page)
-            st.caption(
-                f"{total_nf} registro(s) encontrado(s)"
-                + (f" • Página {page_number} de {total_pages}" if total_nf else "")
+        if st.session_state.get("_nf_export_bytes"):
+            st.download_button(
+                "Baixar base completa em Excel",
+                data=st.session_state["_nf_export_bytes"],
+                file_name=st.session_state.get("_nf_export_name", "base_nfs.xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="nf_download_export",
             )
-            if nf_view.empty:
-                st.info("Nenhum registro encontrado para os filtros selecionados.")
-            else:
-                st.dataframe(
-                    nf_view,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=520,
-                    column_config={
-                        "Classificação": "Classificação",
-                        "Documento": "Documento",
-                        "Fornecedor": "Fornecedor",
-                        "Código": "Código",
-                        "Produto": "Produto",
-                        "QNT": st.column_config.NumberColumn("QNT"),
-                        "Natureza": "Natureza",
-                    },
-                )
-
-            if st.button("Preparar exportação completa em Excel", key="nf_prepare_export"):
-                try:
-                    export_rows = _supabase_api("export_nfs", timeout=60).get("data") or []
-                    export_df = _nf_rows_to_frame(export_rows)
-                    export_buffer = BytesIO()
-                    with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
-                        export_df.to_excel(writer, sheet_name="NFs_Tratadas", index=False)
-                    st.session_state["_nf_export_bytes"] = export_buffer.getvalue()
-                    st.session_state["_nf_export_name"] = f"NFs_Tratadas_{today().strftime('%Y%m%d')}.xlsx"
-                except Exception as exc:
-                    st.error(f"Não foi possível preparar a exportação: {exc}")
-
-            if st.session_state.get("_nf_export_bytes"):
-                st.download_button(
-                    "Baixar Excel tratado",
-                    data=st.session_state["_nf_export_bytes"],
-                    file_name=st.session_state.get("_nf_export_name", "NFs_Tratadas.xlsx"),
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="nf_download_export",
-                )
-
 
 elif page == "Histórico":
     history_tab_general, history_tab_archive, history_tab_feed = st.tabs(["Histórico geral", "Carga histórica", "Alimentação"])
@@ -3836,6 +3883,8 @@ def _render_nf_feed():
                     st.session_state.pop("_nf_export_bytes", None)
                     st.session_state.pop("_nf_export_name", None)
                     st.session_state["_entrega_feed_status_sync"] = False
+                    st.session_state.pop("_nf_export_bytes", None)
+                    st.session_state.pop("_nf_export_name", None)
                     st.session_state["_nf_success"] = (
                         f"Base de NFs salva com {int(response.get('linhas_tratadas', len(treated_nf)))} registro(s): "
                         f"{int(response.get('lancadas', nf_import_meta['lancadas']))} lançada(s) e "
