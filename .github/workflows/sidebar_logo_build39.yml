@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/sidebar_logo_build39.yml'
+      - 'scripts/sidebar_logo_build39.py'
 
 permissions:
   contents: write
