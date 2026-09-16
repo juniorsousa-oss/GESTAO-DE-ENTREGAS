@@ -8,8 +8,7 @@ pos = text.rfind(marker)
 if pos < 0:
     raise SystemExit('CSS insertion marker not found')
 
-css = r'''
-        extra_css += '''
+css_block = """
 
           /* Build 52 — seletor visual fixo no canto esquerdo */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label {
@@ -22,7 +21,6 @@ css = r'''
               text-align: center !important;
           }
 
-          /* Esconde o radio nativo para ele não disputar espaço com o texto */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],
           div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child,
           div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child {
@@ -41,7 +39,6 @@ css = r'''
               pointer-events: none !important;
           }
 
-          /* Seletor próprio, sempre preso à esquerda do balão */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {
               content: "" !important;
               display: block !important;
@@ -74,7 +71,6 @@ css = r'''
               display: none !important;
           }
 
-          /* O texto ocupa todo o card e fica centralizado independentemente do seletor */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
               position: static !important;
               display: flex !important;
@@ -97,11 +93,10 @@ css = r'''
               text-align: center !important;
               line-height: 1 !important;
           }
-'''
+"""
 
-'''
-
-text = text[:pos] + css + text[pos:]
+injection = "        extra_css += " + repr(css_block) + "\n\n"
+text = text[:pos] + injection + text[pos:]
 
 if 'APP core build 51' not in text:
     raise SystemExit('Build 51 marker not found')
