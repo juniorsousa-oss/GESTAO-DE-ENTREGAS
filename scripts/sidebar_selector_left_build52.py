@@ -3,22 +3,13 @@ from pathlib import Path
 path = Path('streamlit_app.py')
 text = path.read_text(encoding='utf-8')
 
-anchor = '''          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              border-left: 5px solid #ef3038 !important;
-              padding-left: 2.6rem !important;
-              padding-right: 2.6rem !important;
-          }
-'''\n        body = body.replace('</style>', extra_css + '\\n</style>')'''
+marker = "        body = body.replace('</style>', extra_css + '\\n</style>')"
+pos = text.rfind(marker)
+if pos < 0:
+    raise SystemExit('CSS insertion marker not found')
 
-if anchor not in text:
-    raise SystemExit('Build 51 CSS anchor not found')
-
-build52 = '''          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              border-left: 5px solid #ef3038 !important;
-              padding-left: 2.6rem !important;
-              padding-right: 2.6rem !important;
-          }
-'''\n        extra_css += '''
+css = r'''
+        extra_css += '''
 
           /* Build 52 — seletor visual fixo no canto esquerdo */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label {
@@ -31,7 +22,7 @@ build52 = '''          div[class*="st-key-main_navigation"] [role="radiogroup"] 
               text-align: center !important;
           }
 
-          /* Esconde completamente o controle nativo para ele não interferir no layout */
+          /* Esconde o radio nativo para ele não disputar espaço com o texto */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],
           div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child,
           div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child {
@@ -50,7 +41,7 @@ build52 = '''          div[class*="st-key-main_navigation"] [role="radiogroup"] 
               pointer-events: none !important;
           }
 
-          /* Círculo próprio: posição fixa, independente do texto */
+          /* Seletor próprio, sempre preso à esquerda do balão */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {
               content: "" !important;
               display: block !important;
@@ -75,16 +66,15 @@ build52 = '''          div[class*="st-key-main_navigation"] [role="radiogroup"] 
           div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {
               border-color: #ff454d !important;
               background: radial-gradient(circle at center, #ffffff 0 24%, #ff454d 27% 100%) !important;
-              box-shadow: 0 0 0 2px rgba(255,69,77,.10) !important;
+              box-shadow: 0 0 0 2px rgba(255, 69, 77, .10) !important;
           }
 
-          /* Nenhum pseudo-elemento à direita */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {
               content: none !important;
               display: none !important;
           }
 
-          /* Texto matematicamente centralizado no card inteiro */
+          /* O texto ocupa todo o card e fica centralizado independentemente do seletor */
           div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
               position: static !important;
               display: flex !important;
@@ -107,9 +97,11 @@ build52 = '''          div[class*="st-key-main_navigation"] [role="radiogroup"] 
               text-align: center !important;
               line-height: 1 !important;
           }
-'''\n        body = body.replace('</style>', extra_css + '\\n</style>')'''
+'''
 
-text = text.replace(anchor, build52, 1)
+'''
+
+text = text[:pos] + css + text[pos:]
 
 if 'APP core build 51' not in text:
     raise SystemExit('Build 51 marker not found')
