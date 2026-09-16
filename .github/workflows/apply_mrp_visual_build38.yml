@@ -1,0 +1,32 @@
+name: Apply MRP visual build 38
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply_mrp_visual_build38.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply visual patch
+        run: |
+          python scripts/apply_mrp_visual_build38.py
+          python -m py_compile streamlit_app.py
+      - name: Commit visual update
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Align deliveries visual layout with MRP converter"
+          git push
