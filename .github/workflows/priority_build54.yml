@@ -1,0 +1,35 @@
+name: Priority workflow build 54
+
+on:
+  push:
+    paths:
+      - '.github/workflows/priority_build54.yml'
+      - 'scripts/priority_build54.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply build 54 patch
+        run: |
+          python scripts/priority_build54.py
+          python -m py_compile streamlit_app.py
+          grep -n 'APP core build 54' streamlit_app.py
+          grep -n 'Prioridade solicitada' streamlit_app.py | head -20
+      - name: Commit update
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add priority workflow to schedule and materials"
+          git push
