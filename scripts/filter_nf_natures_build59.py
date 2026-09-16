@@ -73,7 +73,7 @@ new_processor = '''def processar_nf_bruto(raw):
 '''
 pattern = r'def processar_nf_bruto\(raw\):\n.*?\n\ndef _nf_payload_rows\(df\):'
 replacement = new_processor + '\n\ndef _nf_payload_rows(df):'
-text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+text, count = re.subn(pattern, lambda _: replacement, text, count=1, flags=re.S)
 if count != 1:
     raise SystemExit(f"processar_nf_bruto replacement count={count}")
 
