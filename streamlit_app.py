@@ -330,8 +330,14 @@ def _sync_materials_from_supabase(force=False):
                 materials_df = materials_df.rename(columns={legacy_situation_col: "Situação Separação"})
             if "Situação Separação" in materials_df.columns:
                 materials_df["Situação Separação"] = materials_df["Situação Separação"].map(_normalize_delivery_state)
-            if {"Situação Separação", "Ação"}.issubset(materials_df.columns):
-                possui_separacao = materials_df["Situação Separação"].eq("POSSUI SEPARAÇÃO")
+            if {"Projeto", "Situação Separação", "Ação"}.issubset(materials_df.columns):
+                projeto_key = materials_df["Projeto"].map(normalize_op)
+                possui_separacao = (
+                    materials_df["Situação Separação"].eq("POSSUI SEPARAÇÃO")
+                    .groupby(projeto_key)
+                    .transform("any")
+                    .fillna(False)
+                )
                 atendimento_estoque = materials_df["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
                 materials_df["Condição de pendência"] = (possui_separacao & atendimento_estoque).map({True: "SIM", False: "NÃO"})
             material_order = [
@@ -1851,7 +1857,13 @@ def import_materials(raw):
     base["Situação Separação"] = parsed.map(lambda x: x[4])
 
     atendimento_estoque = base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
-    possui_separacao = base["Situação Separação"].eq("POSSUI SEPARAÇÃO")
+    projeto_key = base["Projeto"].map(normalize_op)
+    possui_separacao = (
+        base["Situação Separação"].eq("POSSUI SEPARAÇÃO")
+        .groupby(projeto_key)
+        .transform("any")
+        .fillna(False)
+    )
     base["Condição de pendência"] = (possui_separacao & atendimento_estoque).map({True: "SIM", False: "NÃO"})
 
     st.session_state.materials = base
@@ -2399,7 +2411,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 61
+            <b>Build</b><br>APP core build 62
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4388,4 +4400,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 19")
+st.sidebar.caption("UI build 20")
