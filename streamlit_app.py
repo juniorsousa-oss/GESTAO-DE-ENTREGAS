@@ -1351,9 +1351,11 @@ st.set_page_config(
 )
 
 TZ = ZoneInfo("America/Sao_Paulo")
-STATUS = ["Pendências", "Aguardando separação", "Em separação", "Separado", "Entregue"]
-MANUAL_STATUS = ["Em separação", "Separado"]
-CRONOGRAMA_STATUS = ["Aguardando separação", "Atrasado", "Em separação", "Separado", "Inconsistência PCP"]
+PRIORITY_STATUS = "Prioridade solicitada"
+STATUS = ["Pendências", "Aguardando separação", "Em separação", PRIORITY_STATUS, "Separado", "Entregue"]
+MANUAL_STATUS = ["Em separação", PRIORITY_STATUS, "Separado"]
+STANDARD_MANUAL_STATUS = ["Em separação", "Separado"]
+CRONOGRAMA_STATUS = ["Aguardando separação", "Atrasado", "Em separação", PRIORITY_STATUS, "Separado", "Inconsistência PCP"]
 MASTER_COLS = [
     "op", "psy", "cliente", "produto", "data_separacao", "status",
     "alerta_ativo", "tipo_alerta", "tratativa_pcp", "ultimo_comentario",
@@ -1979,6 +1981,7 @@ def apply_operational_statuses(schedule, total_item_map):
         return schedule.copy() if isinstance(schedule, pd.DataFrame) else schedule
 
     result = schedule.copy()
+    result["status_salvo"] = result["status"].fillna("").astype(str) if "status" in result.columns else ""
     status_map, delivery_map, raw_count_map, context_map = _mrp_summary_maps()
     result["qtd_itens_pendentes"] = result["op"].astype(str).map(total_item_map).fillna(0).astype(int)
     result["qtd_itens_mrp"] = result["op"].astype(str).map(raw_count_map).fillna(result["qtd_itens_pendentes"]).astype(int)
@@ -2009,6 +2012,7 @@ def apply_operational_statuses(schedule, total_item_map):
     groups = []
     signals = []
     reasons = []
+    priorities = []
 
     for _, row in result.iterrows():
         qty = int(row.get("qtd_itens_pendentes", 0) or 0)
@@ -2017,7 +2021,8 @@ def apply_operational_statuses(schedule, total_item_map):
             d = d.date()
         project_status = _normalize_project_status(row.get("status_projeto_mrp"))
         possui_entrega = bool(row.get("possui_entrega", False))
-        stored = str(row.get("status") or "").strip()
+        stored = str(row.get("status_salvo") or row.get("status") or "").strip()
+        priority = stored == PRIORITY_STATUS
         special = project_status in SPECIAL_PROJECT_STATUSES
         data_alert = bool(row.get("alerta_data_ativo", False))
         special_alert = bool(row.get("alerta_status_especial", False)) or special
@@ -2027,6 +2032,9 @@ def apply_operational_statuses(schedule, total_item_map):
         if special:
             base_status = project_status.title() if project_status != "RESÍDUO" else "Resíduo"
             group = "Especial"
+        elif priority:
+            base_status = PRIORITY_STATUS
+            group = "Em processo"
         elif qty == 0:
             base_status = "Entregue"
             group = "Entregues"
@@ -2056,6 +2064,8 @@ def apply_operational_statuses(schedule, total_item_map):
 
         if special:
             display_status = base_status
+        elif priority:
+            display_status = PRIORITY_STATUS
         elif data_alert:
             display_status = "Inconsistência PCP"
         else:
@@ -2064,6 +2074,8 @@ def apply_operational_statuses(schedule, total_item_map):
         signal = ""
         if special_alert:
             signal = "CRÍTICO"
+        elif priority:
+            signal = "PRIORIDADE"
         elif data_alert:
             signal = "CRÍTICO"
         elif base_status == "Atrasado":
@@ -2084,12 +2096,14 @@ def apply_operational_statuses(schedule, total_item_map):
         groups.append(group)
         signals.append(signal)
         reasons.append(" | ".join(reason_parts))
+        priorities.append(priority)
 
     result["status_base"] = base_statuses
     result["status"] = display_statuses
     result["grupo_operacional"] = groups
     result["sinalizacao"] = signals
     result["motivo_alerta"] = reasons
+    result["prioridade_solicitada"] = priorities
     return result
 
 
@@ -2104,18 +2118,40 @@ def manual_status_allowed(row):
     if isinstance(d, pd.Timestamp):
         d = d.date()
     project_status = _normalize_project_status(row.get("status_projeto_mrp"))
+    if project_status in SPECIAL_PROJECT_STATUSES:
+        return False
+    stored = str(row.get("status_salvo") or row.get("status") or "").strip()
+    if stored == PRIORITY_STATUS:
+        return True
     possui_entrega = bool(row.get("possui_entrega", False))
     context_known = bool(row.get("contexto_mrp_disponivel", False))
     if not context_known:
         return qty > 0 and d >= today()
-    return qty > 0 and d >= today() and not possui_entrega and project_status not in SPECIAL_PROJECT_STATUSES
+    return qty > 0 and d >= today() and not possui_entrega
+
+
+def priority_allowed(row):
+    try:
+        qty = int(row.get("qtd_itens_pendentes", 0) or 0)
+    except Exception:
+        qty = 0
+    project_status = _normalize_project_status(row.get("status_projeto_mrp"))
+    if qty <= 0 or project_status in SPECIAL_PROJECT_STATUSES:
+        return False
+    context_known = bool(row.get("contexto_mrp_disponivel", False))
+    possui_entrega = bool(row.get("possui_entrega", False))
+    if context_known and possui_entrega:
+        return False
+    return True
 
 
 def _style_operational_rows(df):
     def style_row(row):
         status = str(row.get("status", ""))
         signal = str(row.get("sinalizacao", ""))
-        if signal == "CRÍTICO" or status == "Inconsistência PCP" or status in ("Suspenso", "Cancelado", "Resíduo"):
+        if signal == "PRIORIDADE" or status == PRIORITY_STATUS:
+            css = "background-color: #f5f3ff; color: #5b21b6; font-weight: 600;"
+        elif signal == "CRÍTICO" or status == "Inconsistência PCP" or status in ("Suspenso", "Cancelado", "Resíduo"):
             css = "background-color: #fff1f2; color: #881337;"
         elif signal == "ATRASADO" or status == "Atrasado":
             css = "background-color: #fff7ed; color: #9a3412;"
@@ -2283,7 +2319,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 53
+            <b>Build</b><br>APP core build 54
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2467,12 +2503,22 @@ elif page == "Cronograma":
         if schedule.empty:
             st.info("Nenhuma OP com Data de Separação carregada.")
         else:
-            f1, f2 = st.columns([1.7, 1])
+            f1, f2, f3 = st.columns([1.7, 1, 1])
             search = f1.text_input("Buscar OP / cliente / produto")
             status_filter = f2.multiselect("Status", CRONOGRAMA_STATUS, default=CRONOGRAMA_STATUS)
+            priority_filter = f3.selectbox(
+                "Prioridade",
+                ["Todos", "Somente prioridade", "Sem prioridade"],
+                index=0,
+                key="cronograma_prioridade_filtro",
+            )
 
             operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])].copy()
             view = operational_schedule[operational_schedule["status"].isin(status_filter)].copy()
+            if priority_filter == "Somente prioridade":
+                view = view[view["prioridade_solicitada"].fillna(False).astype(bool)]
+            elif priority_filter == "Sem prioridade":
+                view = view[~view["prioridade_solicitada"].fillna(False).astype(bool)]
             if search.strip():
                 term = search.strip().lower()
                 mask = (
@@ -2483,7 +2529,8 @@ elif page == "Cronograma":
                 )
                 view = view[mask]
 
-            view = view.sort_values(["data_separacao", "op"]).reset_index(drop=True)
+            view = view.assign(_priority_sort=view["prioridade_solicitada"].fillna(False).astype(bool))
+            view = view.sort_values(["_priority_sort", "data_separacao", "op"], ascending=[False, True, True]).drop(columns=["_priority_sort"]).reset_index(drop=True)
 
             st.caption("Marque uma ou mais OPs na coluna Selecionar. Uma OP abre as ações individuais; duas ou mais habilitam a ação em lote.")
 
@@ -2535,69 +2582,84 @@ elif page == "Cronograma":
 
             if len(selected_rows) > 1:
                 selected_projects = view.iloc[selected_rows].copy()
-                eligibility = selected_projects.apply(manual_status_allowed, axis=1)
-                blocked_count = int((~eligibility).sum())
+                selected_ops = selected_projects["op"].astype(str).drop_duplicates().tolist()
+                manual_eligibility = selected_projects.apply(manual_status_allowed, axis=1)
+                priority_eligibility = selected_projects.apply(priority_allowed, axis=1)
+                already_priority = selected_projects["prioridade_solicitada"].fillna(False).astype(bool)
+                manual_blocked = int((~manual_eligibility).sum())
+                priority_blocked = int((~priority_eligibility).sum())
 
-                if blocked_count:
-                    st.warning(
-                        f"{blocked_count} OP(s) selecionada(s) não podem ter o status alterado. "
-                        "Somente projetos com itens pendentes, Data de Separação para hoje ou futura e NÃO POSSUI ENTREGA podem ser alterados pela equipe."
-                    )
-                else:
-                    selected_ops = selected_projects["op"].astype(str).drop_duplicates().tolist()
-                    st.markdown("#### Ação em lote")
-                    st.info(f"{len(selected_ops)} OPs selecionadas. Escolha o novo status operacional.")
+                st.markdown("#### Ação em lote")
+                st.info(f"{len(selected_ops)} OPs selecionadas.")
+                bulk_user = st.text_input(
+                    "Responsável",
+                    value="Operador",
+                    key="core_bulk_user",
+                )
 
-                    b1, b2 = st.columns([1, 1.4])
-                    bulk_status = b1.selectbox(
-                        "Novo status",
-                        MANUAL_STATUS,
-                        index=0,
-                        key="core_bulk_status",
-                    )
-                    bulk_user = b2.text_input(
-                        "Responsável",
-                        value="Operador",
-                        key="core_bulk_user",
-                    )
+                pcol, scol = st.columns([1, 1.35])
+                if pcol.button(
+                    f"Solicitar prioridade ({len(selected_ops)})",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=(priority_blocked > 0 or bool(already_priority.all())),
+                    key="core_bulk_priority",
+                ):
+                    try:
+                        result = _supabase_api(
+                            "update_status_bulk",
+                            {
+                                "ops": selected_ops,
+                                "status": PRIORITY_STATUS,
+                                "responsavel": bulk_user or "Operador",
+                            },
+                            timeout=45,
+                        )
+                        st.session_state["_entrega_supabase_sync"] = False
+                        _sync_current_from_supabase(force=True)
+                        st.success(f"Prioridade solicitada para {int(result.get('atualizadas', 0))} OP(s).")
+                        st.session_state.pop("cronograma_selecao_editor_core", None)
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível solicitar prioridade: {exc}")
 
-                    if st.button(
-                        f"Aplicar {bulk_status} em {len(selected_ops)} OPs",
-                        type="primary",
-                        use_container_width=True,
-                        key="core_bulk_apply",
-                    ):
-                        try:
-                            if "_supabase_api" in globals():
-                                result = _supabase_api(
-                                    "update_status_bulk",
-                                    {
-                                        "ops": selected_ops,
-                                        "status": bulk_status,
-                                        "responsavel": bulk_user or "Operador",
-                                    },
-                                    timeout=45,
-                                )
-                                if "_sync_current_from_supabase" in globals():
-                                    st.session_state["_entrega_supabase_sync"] = False
-                                    _sync_current_from_supabase(force=True)
-                                updated = int(result.get("atualizadas", 0))
-                                unchanged = int(result.get("sem_alteracao", 0))
-                                st.success(
-                                    f"{updated} OP(s) alterada(s) para {bulk_status}. "
-                                    + (f"{unchanged} já estavam nesse status." if unchanged else "")
-                                )
-                            else:
-                                updated = 0
-                                for op in selected_ops:
-                                    changed, _ = change_status(op, bulk_status, bulk_user)
-                                    updated += int(changed)
-                                st.success(f"{updated} OP(s) alterada(s) para {bulk_status}.")
-                            st.session_state.pop("cronograma_selecao_editor_core", None)
-                            st.rerun()
-                        except Exception as exc:
-                            st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
+                standard_status = scol.selectbox(
+                    "Alterar status para",
+                    STANDARD_MANUAL_STATUS,
+                    index=0,
+                    key="core_bulk_status",
+                )
+                if st.button(
+                    f"Aplicar {standard_status} em {len(selected_ops)} OPs",
+                    use_container_width=True,
+                    disabled=manual_blocked > 0,
+                    key="core_bulk_apply",
+                ):
+                    try:
+                        result = _supabase_api(
+                            "update_status_bulk",
+                            {
+                                "ops": selected_ops,
+                                "status": standard_status,
+                                "responsavel": bulk_user or "Operador",
+                            },
+                            timeout=45,
+                        )
+                        st.session_state["_entrega_supabase_sync"] = False
+                        _sync_current_from_supabase(force=True)
+                        st.success(f"{int(result.get('atualizadas', 0))} OP(s) alterada(s) para {standard_status}.")
+                        st.session_state.pop("cronograma_selecao_editor_core", None)
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
 
+                if priority_blocked:
+                    st.caption(f"{priority_blocked} OP(s) selecionada(s) não podem receber prioridade por não possuírem itens elegíveis ou estarem em condição especial/entrega já registrada.")
+                if manual_blocked:
+                    st.caption(f"{manual_blocked} OP(s) não podem receber uma alteração operacional padrão nas condições atuais.")
+
+                # Com várias OPs marcadas, não abre o painel individual.
+                selected_rows = []
                 # Com várias OPs marcadas, não abre o painel individual.
                 selected_rows = []
 
@@ -2621,6 +2683,35 @@ elif page == "Cronograma":
                     unsafe_allow_html=True,
                 )
 
+                is_priority = bool(project.get("prioridade_solicitada", False))
+                can_request_priority = priority_allowed(project) and not is_priority
+                if is_priority:
+                    st.info("PRIORIDADE SOLICITADA • Esta OP permanecerá no grupo Em separação até o status ser alterado manualmente.")
+                elif st.button(
+                    "Solicitar prioridade",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=not can_request_priority,
+                    key=f"solicitar_prioridade_{op_selected}",
+                ):
+                    try:
+                        _supabase_api(
+                            "team_action",
+                            {
+                                "op": op_selected,
+                                "status": PRIORITY_STATUS,
+                                "comentario": None,
+                                "responsavel": "Operador",
+                            },
+                            timeout=45,
+                        )
+                        st.session_state["_entrega_supabase_sync"] = False
+                        _sync_current_from_supabase(force=True)
+                        st.success("Prioridade solicitada para a OP.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível solicitar prioridade: {exc}")
+
                 a1, a2 = st.columns(2)
                 can_change_status = manual_status_allowed(project)
                 do_status = a1.checkbox(
@@ -2638,14 +2729,14 @@ elif page == "Cronograma":
                     key=f"responsavel_{op_selected}",
                 )
 
-                chosen_status = project["status"] if project["status"] in MANUAL_STATUS else MANUAL_STATUS[0]
+                chosen_status = project["status"] if project["status"] in STANDARD_MANUAL_STATUS else STANDARD_MANUAL_STATUS[0]
                 comment_text = ""
 
                 if do_status:
                     chosen_status = st.selectbox(
                         "Novo status",
-                        MANUAL_STATUS,
-                        index=MANUAL_STATUS.index(project["status"]) if project["status"] in MANUAL_STATUS else 0,
+                        STANDARD_MANUAL_STATUS,
+                        index=STANDARD_MANUAL_STATUS.index(project["status"]) if project["status"] in STANDARD_MANUAL_STATUS else 0,
                         key=f"novo_status_{op_selected}",
                     )
 
@@ -2871,11 +2962,17 @@ elif page == "Materiais":
         if materials.empty:
             st.info("Nenhuma aba Demanda_Projeto carregada.")
         else:
-            f_pendencia, f_projeto = st.columns([1, 2.2])
+            f_pendencia, f_projeto, f_prioridade = st.columns([1, 2.0, 1.15])
             pendencia_filtro = f_pendencia.selectbox(
                 "Condição de pendência",
                 ["Todos", "SIM", "NÃO"],
                 index=0,
+            )
+            prioridade_material_filtro = f_prioridade.selectbox(
+                "Prioridade",
+                ["Todos", "Somente prioridade", "Sem prioridade"],
+                index=0,
+                key="materiais_prioridade_filtro",
             )
 
             view = materials.copy()
@@ -2945,6 +3042,16 @@ elif page == "Materiais":
                 view["Responsável"] = pd.Series(dtype=str)
                 view["Atualizado em"] = pd.Series(dtype=object)
 
+            view["Prioridade solicitada"] = view["Status separação"].astype(str).eq(PRIORITY_STATUS)
+            view["Sinalização"] = view["Prioridade solicitada"].map(lambda v: "🟣 PRIORIDADE" if bool(v) else "")
+            if prioridade_material_filtro == "Somente prioridade":
+                view = view[view["Prioridade solicitada"]].copy()
+            elif prioridade_material_filtro == "Sem prioridade":
+                view = view[~view["Prioridade solicitada"]].copy()
+
+            view = view.assign(_priority_sort=view["Prioridade solicitada"].astype(bool))
+            view = view.sort_values(["_priority_sort", "Projeto", "Produto"], ascending=[False, True, True]).drop(columns=["_priority_sort"])
+
             pendentes_view = view[view["Status separação"] != "Separado"].reset_index(drop=True)
             entregues_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
 
@@ -3001,46 +3108,90 @@ elif page == "Materiais":
                             for _, r in selected.iterrows()
                         ]
 
-                        b1, b2 = st.columns(2)
+                        b1, b2, b3, b4 = st.columns(4)
                         if b1.button(
-                            "Marcar selecionados como separado",
+                            "Solicitar prioridade",
                             type="primary",
+                            use_container_width=True,
+                            key="material_bulk_prioridade",
+                        ):
+                            try:
+                                result = _supabase_api(
+                                    "material_action_bulk",
+                                    {
+                                        "itens": itens_payload,
+                                        "status": PRIORITY_STATUS,
+                                        "comentario": comentario_material.strip() or None,
+                                        "responsavel": responsavel_material or "Operador",
+                                    },
+                                    timeout=45,
+                                )
+                                _sync_material_ops(force=True)
+                                st.session_state["_material_action_success"] = (
+                                    f"Prioridade solicitada para {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                )
+                                st.session_state.pop("materiais_pendentes_editor", None)
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Não foi possível solicitar prioridade: {exc}")
+
+                        if b2.button(
+                            "Remover prioridade",
+                            use_container_width=True,
+                            key="material_bulk_remover_prioridade",
+                        ):
+                            try:
+                                result = _supabase_api(
+                                    "material_action_bulk",
+                                    {
+                                        "itens": itens_payload,
+                                        "status": "Pendente",
+                                        "comentario": comentario_material.strip() or None,
+                                        "responsavel": responsavel_material or "Operador",
+                                    },
+                                    timeout=45,
+                                )
+                                _sync_material_ops(force=True)
+                                st.session_state["_material_action_success"] = (
+                                    f"Prioridade removida de {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                )
+                                st.session_state.pop("materiais_pendentes_editor", None)
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Não foi possível remover a prioridade: {exc}")
+
+                        if b3.button(
+                            "Marcar como separado",
                             use_container_width=True,
                             key="material_bulk_separado",
                         ):
-                            if "_supabase_api" not in globals():
-                                st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
-                            else:
-                                try:
-                                    result = _supabase_api(
-                                        "material_action_bulk",
-                                        {
-                                            "itens": itens_payload,
-                                            "status": "Separado",
-                                            "comentario": comentario_material.strip() or None,
-                                            "responsavel": responsavel_material or "Operador",
-                                        },
-                                        timeout=45,
-                                    )
-                                    _sync_material_ops(force=True)
-                                    st.session_state["_material_action_success"] = (
-                                        f"{int(result.get('atualizados', len(itens_payload)))} item(ns) "
-                                        "marcado(s) como separado e movido(s) para Marcados como entregue."
-                                    )
-                                    st.session_state.pop("materiais_pendentes_editor", None)
-                                    st.rerun()
-                                except Exception as exc:
-                                    st.error(f"Não foi possível marcar os itens como separados: {exc}")
+                            try:
+                                result = _supabase_api(
+                                    "material_action_bulk",
+                                    {
+                                        "itens": itens_payload,
+                                        "status": "Separado",
+                                        "comentario": comentario_material.strip() or None,
+                                        "responsavel": responsavel_material or "Operador",
+                                    },
+                                    timeout=45,
+                                )
+                                _sync_material_ops(force=True)
+                                st.session_state["_material_action_success"] = (
+                                    f"{int(result.get('atualizados', len(itens_payload)))} item(ns) marcado(s) como separado."
+                                )
+                                st.session_state.pop("materiais_pendentes_editor", None)
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Não foi possível marcar os itens como separados: {exc}")
 
-                        if b2.button(
+                        if b4.button(
                             "Salvar comentário",
                             use_container_width=True,
                             key="material_bulk_comment",
                         ):
                             if not comentario_material.strip():
                                 st.warning("Digite um comentário antes de salvar.")
-                            elif "_supabase_api" not in globals():
-                                st.error("Conexão com o Supabase indisponível. O comentário não foi salvo.")
                             else:
                                 try:
                                     result = _supabase_api(
@@ -4035,4 +4186,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 13")
+st.sidebar.caption("UI build 14")
