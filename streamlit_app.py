@@ -1432,18 +1432,22 @@ def _mrp_summary_maps():
     status_map = {}
     delivery_map = {}
     raw_count_map = {}
+    context_map = {}
     if isinstance(summary, pd.DataFrame) and not summary.empty:
         for _, r in summary.iterrows():
             op = normalize_op(r.get("projeto"))
             if not op:
                 continue
-            status_map[op] = _normalize_project_status(r.get("status_projeto"))
-            delivery_map[op] = bool(r.get("possui_entrega", False)) or _normalize_delivery_state(r.get("situacao_entrega")) == "POSSUI ENTREGA"
+            status_value = _normalize_project_status(r.get("status_projeto"))
+            delivery_value = _normalize_delivery_state(r.get("situacao_entrega"))
+            status_map[op] = status_value
+            delivery_map[op] = bool(r.get("possui_entrega", False)) or delivery_value == "POSSUI ENTREGA"
+            context_map[op] = bool(status_value or delivery_value or str(r.get("contexto_raw") or "").strip())
             try:
                 raw_count_map[op] = int(r.get("qtd_itens_mrp", 0) or 0)
             except Exception:
                 raw_count_map[op] = 0
-    return status_map, delivery_map, raw_count_map
+    return status_map, delivery_map, raw_count_map, context_map
 
 
 def apply_operational_statuses(schedule, total_item_map):
@@ -1451,12 +1455,13 @@ def apply_operational_statuses(schedule, total_item_map):
         return schedule.copy() if isinstance(schedule, pd.DataFrame) else schedule
 
     result = schedule.copy()
-    status_map, delivery_map, raw_count_map = _mrp_summary_maps()
+    status_map, delivery_map, raw_count_map, context_map = _mrp_summary_maps()
     result["qtd_itens_pendentes"] = result["op"].astype(str).map(total_item_map).fillna(0).astype(int)
     result["qtd_itens_mrp"] = result["op"].astype(str).map(raw_count_map).fillna(result["qtd_itens_pendentes"]).astype(int)
     result["status_projeto_mrp"] = result["op"].astype(str).map(status_map).fillna("")
     result["possui_entrega"] = result["op"].astype(str).map(delivery_map).fillna(False).astype(bool)
-    result["situacao_entrega"] = result["possui_entrega"].map({True: "POSSUI ENTREGA", False: "NÃO POSSUI ENTREGA"})
+    result["contexto_mrp_disponivel"] = result["op"].astype(str).map(context_map).fillna(False).astype(bool)
+    result["situacao_entrega"] = result.apply(lambda r: ("POSSUI ENTREGA" if bool(r["possui_entrega"]) else "NÃO POSSUI ENTREGA") if bool(r["contexto_mrp_disponivel"]) else "AGUARDANDO NOVA CARGA MRP", axis=1)
 
     if "alerta_status_especial" not in result.columns:
         result["alerta_status_especial"] = result["status_projeto_mrp"].isin(SPECIAL_PROJECT_STATUSES)
@@ -1494,12 +1499,24 @@ def apply_operational_statuses(schedule, total_item_map):
         special_alert = bool(row.get("alerta_status_especial", False)) or special
         attention = bool(row.get("atencao_ativo", False)) and d is not None and not pd.isna(d) and d >= today()
 
+        context_known = bool(row.get("contexto_mrp_disponivel", False))
         if special:
             base_status = project_status.title() if project_status != "RESÍDUO" else "Resíduo"
             group = "Especial"
         elif qty == 0:
             base_status = "Entregue"
             group = "Entregues"
+        elif not context_known:
+            # Fallback da base antiga: preserva a regra anterior até a primeira carga MRP com coluna O.
+            if d is not None and not pd.isna(d) and d < today():
+                base_status = "Pendências"
+                group = "Com pendências"
+            elif stored in MANUAL_STATUS:
+                base_status = stored
+                group = "Em processo"
+            else:
+                base_status = "Aguardando separação"
+                group = "Aguardando separação"
         elif possui_entrega:
             base_status = "Pendências"
             group = "Com pendências"
@@ -1564,6 +1581,9 @@ def manual_status_allowed(row):
         d = d.date()
     project_status = _normalize_project_status(row.get("status_projeto_mrp"))
     possui_entrega = bool(row.get("possui_entrega", False))
+    context_known = bool(row.get("contexto_mrp_disponivel", False))
+    if not context_known:
+        return qty > 0 and d >= today()
     return qty > 0 and d >= today() and not possui_entrega and project_status not in SPECIAL_PROJECT_STATUSES
 
 
@@ -1776,6 +1796,8 @@ if page == "Dashboard":
     total_item_map = total_items_by_op(materials)
     pending_balance_map = pending_items_by_op(materials)
     schedule = apply_operational_statuses(schedule, total_item_map)
+    if not schedule.empty and "contexto_mrp_disponivel" in schedule.columns and not schedule["contexto_mrp_disponivel"].any():
+        st.info("A base MRP atualmente salva é anterior à nova coluna O. A lógica anterior permanece ativa até a próxima carga do MRP Consulta.")
     total_projects = len(schedule)
     alerts = int(schedule["alerta_ativo"].fillna(False).astype(bool).sum()) if not schedule.empty else 0
     total_waiting = int((schedule["grupo_operacional"] == "Aguardando separação").sum()) if not schedule.empty else 0
