@@ -56,13 +56,21 @@ def _supabase_api(action, payload=None, timeout=45):
         "load_material_summary": "entrega_listar_mrp_resumo",
         "load_material_ops": "entrega_listar_mrp_operacoes",
         "list_daily_alerts": "entrega_listar_alertas_diarios",
+        "save_logo": "entrega_salvar_logo",
     }
     if action in direct_rpc:
         rpc_url = f"https://cuixazpxkvniqldmmnth.supabase.co/rest/v1/rpc/{direct_rpc[action]}"
+        rpc_payload = {}
+        if action == "save_logo":
+            source = payload or {}
+            rpc_payload = {
+                "p_logo_data": source.get("logo_data"),
+                "p_logo_mime": source.get("logo_mime"),
+            }
         response = requests.post(
             rpc_url,
             headers=headers,
-            json={},
+            json=rpc_payload,
             timeout=timeout,
         )
         try:
@@ -167,6 +175,10 @@ def _sync_bootstrap_from_supabase(force=False):
                 summary["pendencias_com_saldo"], errors="coerce"
             ).fillna(0).astype(int)
         st.session_state["_entrega_mrp_summary"] = summary[expected].copy()
+
+        app_config = payload.get("app_config") or {}
+        if isinstance(app_config, dict):
+            st.session_state["_entrega_app_config"] = app_config
 
         st.session_state["_entrega_supabase_sync"] = True
         st.session_state["_entrega_mrp_summary_sync"] = True
@@ -1278,12 +1290,21 @@ def manual_status_allowed(row):
 
 
 logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
-logo_bytes = None
-logo_mime = "image/svg+xml"
+default_logo_data = ""
+default_logo_mime = "image/svg+xml"
 try:
-    logo_bytes = logo_path.read_bytes()
+    default_logo_data = base64.b64encode(logo_path.read_bytes()).decode("ascii")
 except OSError:
     pass
+
+app_config = st.session_state.get("_entrega_app_config", {})
+if not isinstance(app_config, dict):
+    app_config = {}
+
+saved_logo_data = str(app_config.get("logo_data") or "").strip()
+saved_logo_mime = str(app_config.get("logo_mime") or "image/png").strip() or "image/png"
+active_logo_data = saved_logo_data or default_logo_data
+active_logo_mime = saved_logo_mime if saved_logo_data else default_logo_mime
 
 with st.sidebar:
     st.markdown(
@@ -1307,19 +1328,43 @@ with st.sidebar:
         "Alterar logo do cabeçalho",
         type=["png", "jpg", "jpeg", "svg"],
         key="entrega_logo_empresa",
-        help="A imagem selecionada substitui a logo padrão durante a sessão atual.",
+        help="A nova logo será salva e reutilizada nas próximas sessões.",
     )
-    if logo_empresa is not None:
-        logo_bytes = logo_empresa.getvalue()
-        logo_mime = logo_empresa.type or "image/png"
 
-    if logo_bytes:
-        sidebar_logo_b64 = base64.b64encode(logo_bytes).decode("ascii")
+    if logo_empresa is not None:
+        uploaded_bytes = logo_empresa.getvalue()
+        if len(uploaded_bytes) > 1_400_000:
+            st.error("A logo deve ter no máximo 1,4 MB para manter o app leve.")
+        else:
+            uploaded_mime = logo_empresa.type or "image/png"
+            uploaded_data = base64.b64encode(uploaded_bytes).decode("ascii")
+            if uploaded_data != saved_logo_data or uploaded_mime != saved_logo_mime:
+                try:
+                    _supabase_api(
+                        "save_logo",
+                        {"logo_data": uploaded_data, "logo_mime": uploaded_mime},
+                        timeout=20,
+                    )
+                    app_config = {
+                        **app_config,
+                        "logo_data": uploaded_data,
+                        "logo_mime": uploaded_mime,
+                    }
+                    st.session_state["_entrega_app_config"] = app_config
+                    saved_logo_data = uploaded_data
+                    saved_logo_mime = uploaded_mime
+                    active_logo_data = uploaded_data
+                    active_logo_mime = uploaded_mime
+                    st.success("Logo salva no Supabase.")
+                except Exception as exc:
+                    st.error(f"Não foi possível salvar a logo: {exc}")
+
+    if active_logo_data:
         st.markdown(
-            f'<div class="sidebar-logo-preview"><img src="data:{logo_mime};base64,{sidebar_logo_b64}" alt="Logo atual"></div>',
+            f'<div class="sidebar-logo-preview"><img src="data:{active_logo_mime};base64,{active_logo_data}" alt="Logo atual"></div>',
             unsafe_allow_html=True,
         )
-    st.caption("A logo é aplicada ao cabeçalho sem alterar as demais configurações do app.")
+    st.caption("A logo fica salva e é restaurada automaticamente ao abrir o app.")
 
     st.divider()
     st.markdown('<div class="sidebar-section-label">Informações</div>', unsafe_allow_html=True)
@@ -1327,14 +1372,13 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 39
+            <b>Build</b><br>APP core build 40
         </div>''',
         unsafe_allow_html=True,
     )
 
-if logo_bytes:
-    encoded_logo = base64.b64encode(logo_bytes).decode("ascii")
-    logo_html = f'<img src="data:{logo_mime};base64,{encoded_logo}" alt="Setta">'
+if active_logo_data:
+    logo_html = f'<img src="data:{active_logo_mime};base64,{active_logo_data}" alt="Setta">'
 else:
     logo_html = '<div style="font-size:2rem;font-weight:800;color:#202124;">SETTA</div>'
 
