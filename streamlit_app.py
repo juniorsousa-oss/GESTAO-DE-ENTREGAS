@@ -785,6 +785,110 @@ def _markdown_ui(body, *args, **kwargs):
               border-radius: 12px !important;
               box-shadow: 0 4px 14px rgba(239, 68, 68, .08);
           }
+
+
+          /* Build 47 — navegação lateral validada */
+          div[class*="st-key-main_navigation"] [role="radiogroup"] {
+              gap: .58rem !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
+              position: relative !important;
+              display: flex !important;
+              align-items: center !important;
+              width: 100% !important;
+              min-height: 52px !important;
+              box-sizing: border-box !important;
+              margin: 0 !important;
+              padding: .72rem .8rem .72rem 3.25rem !important;
+              border: 1px solid #e2e8f0 !important;
+              border-radius: 12px !important;
+              background: #ffffff !important;
+              box-shadow: 0 2px 8px rgba(15, 23, 42, .035) !important;
+              cursor: pointer !important;
+              transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease !important;
+              overflow: hidden !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child {
+              display: none !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
+              margin: 0 !important;
+              color: #334155 !important;
+              font-size: .88rem !important;
+              line-height: 1.2 !important;
+              font-weight: 700 !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:hover {
+              transform: translateY(-1px) !important;
+              border-color: #cbd5e1 !important;
+              box-shadow: 0 5px 14px rgba(15, 23, 42, .07) !important;
+              background: #fbfdff !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {
+              content: "";
+              position: absolute;
+              left: 1.05rem;
+              top: 50%;
+              width: 21px;
+              height: 21px;
+              transform: translateY(-50%);
+              background: #5b6b80;
+              -webkit-mask-image: var(--nav-icon);
+              mask-image: var(--nav-icon);
+              -webkit-mask-repeat: no-repeat;
+              mask-repeat: no-repeat;
+              -webkit-mask-position: center;
+              mask-position: center;
+              -webkit-mask-size: contain;
+              mask-size: contain;
+              transition: background .12s ease;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(1) {
+              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M3 3h8v8H3V3Zm10 0h8v5h-8V3ZM3 13h8v8H3v-8Zm10-3h8v11h-8V10Z'/%3E%3C/svg%3E");
+          }
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(2) {
+              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M6 2h2v2h8V2h2v2h3v18H3V4h3V2Zm13 8H5v10h14V10ZM5 6v2h14V6H5Z'/%3E%3C/svg%3E");
+          }
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(3) {
+              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3L17.4 7 12 9.7 6.6 7 12 4.3ZM5 8.6l6 3v7.8l-6-3V8.6Zm8 10.8v-7.8l6-3v7.8l-6 3Z'/%3E%3C/svg%3E");
+          }
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(4) {
+              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M6 2h8l5 5v15H6V2Zm2 2v16h9V8h-4V4H8Zm7 1.4V6h.6L15 5.4ZM9 11h6v2H9v-2Zm0 4h6v2H9v-2Z'/%3E%3C/svg%3E");
+          }
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(5) {
+              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 4a8 8 0 1 1-7.45 5H2l3.5-4L9 9H6.65A6 6 0 1 0 12 6a5.9 5.9 0 0 0-3.1.87L7.85 5.16A7.93 7.93 0 0 1 12 4Zm-1 3h2v5.2l3.4 2-1 1.7L11 13.3V7Z'/%3E%3C/svg%3E");
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
+              background: linear-gradient(135deg, #112746 0%, #09172f 100%) !important;
+              border-color: #112746 !important;
+              box-shadow: 0 7px 18px rgba(9, 23, 47, .20) !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {
+              background: #ffffff !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::after {
+              content: "";
+              position: absolute;
+              left: 0;
+              top: 0;
+              bottom: 0;
+              width: 5px;
+              background: #ef3038;
+              border-radius: 12px 0 0 12px;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
+              color: #ffffff !important;
+          }
         '''
         body = body.replace('</style>', extra_css + '\n</style>')
 
@@ -897,12 +1001,7 @@ _original_radio = DeltaGenerator.radio
 
 
 def _radio_ui(self, label, options, *args, **kwargs):
-    opcoes = list(options)
-    if label == "Página" and "Carga histórica" not in opcoes:
-        insert_at = opcoes.index("Cronograma") + 1 if "Cronograma" in opcoes else 1
-        opcoes.insert(insert_at, "Carga histórica")
-    return _original_radio(self, label, opcoes, *args, **kwargs)
-
+    return _original_radio(self, label, list(options), *args, **kwargs)
 
 DeltaGenerator.radio = _radio_ui
 
@@ -1771,8 +1870,9 @@ with st.sidebar:
     st.markdown('<div class="sidebar-section-label">Navegação</div>', unsafe_allow_html=True)
     page = st.radio(
         "Página",
-        ["Dashboard", "Cronograma", "Carga histórica", "Materiais", "NFs", "Histórico"],
+        ["Dashboard", "Cronograma", "Materiais", "NFs", "Histórico"],
         label_visibility="collapsed",
+        key="main_navigation",
     )
 
     st.divider()
@@ -1881,7 +1981,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 46
+            <b>Build</b><br>APP core build 47
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2051,7 +2151,7 @@ if page == "Dashboard":
 
 
 elif page == "Cronograma":
-    tab_current, tab_import, tab_pcp = st.tabs(["Cronograma atual", "Importar Excel", "Tratativa PCP"])
+    tab_current, tab_pcp = st.tabs(["Cronograma atual", "Tratativa PCP"])
 
     with tab_current:
         schedule = st.session_state.schedule.copy()
@@ -2290,101 +2390,6 @@ elif page == "Cronograma":
                         st.markdown("##### Comentários da OP")
                         st.dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
 
-    with tab_import:
-        st.markdown("#### Importação do Cronograma de Montagem")
-        current_load_success = st.session_state.pop("_current_load_success", None)
-        if current_load_success:
-            st.success(current_load_success)
-        st.caption("Modelo SEN-PCP-FOR-022 • Aba 'Datas esperadas' • A=OP • B=PSY • C=Cliente • D=Produto • V=Separação")
-        st.info("OP repetida não bloqueia a importação. O sistema consolida a OP e considera a MAIOR Data de Separação da coluna V.")
-
-        uploaded = st.file_uploader("Selecione o SEN-PCP-FOR-022", type=["xlsx", "xls"])
-        if uploaded is not None:
-            try:
-                base, meta = read_macro_schedule(uploaded)
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Linhas do Excel", meta["linhas_excel"])
-                c2.metric("OPs consolidadas", meta["ops_unicas"])
-                c3.metric("OPs com data", meta["ops_com_data"])
-                c4.metric("OPs sem data", meta["ops_sem_data"])
-
-                if meta["linhas_consolidadas"] > 0:
-                    st.warning(
-                        f"{meta['linhas_consolidadas']} linha(s) repetida(s) foram consolidadas. "
-                        "Em cada OP repetida foi mantida a maior data da coluna V."
-                    )
-
-                preview = base[base["data_separacao"].notna()].sort_values(["data_separacao", "op"]).head(20)
-                st.dataframe(
-                    preview,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
-                )
-
-                st.caption(
-                    f"A carga será salva no banco com data de referência {today().strftime('%d/%m/%Y')}. "
-                    "É permitida uma carga oficial por dia."
-                )
-                if st.button("Salvar carga atual e comparar histórico", type="primary"):
-                    if "_supabase_api" not in globals():
-                        st.error("Conexão com o Supabase indisponível. A carga não foi salva.")
-                    else:
-                        rows_payload = []
-                        for _, r in base.iterrows():
-                            d = r["data_separacao"]
-                            if d is None or pd.isna(d):
-                                d_iso = None
-                            else:
-                                if isinstance(d, pd.Timestamp):
-                                    d = d.date()
-                                d_iso = d.isoformat()
-                            rows_payload.append(
-                                {
-                                    "op": str(r["op"]),
-                                    "psy": str(r["psy"] or ""),
-                                    "cliente": str(r["cliente"] or ""),
-                                    "produto": str(r["produto"] or ""),
-                                    "data_separacao": d_iso,
-                                }
-                            )
-
-                        payload = {
-                            "data_referencia": today().isoformat(),
-                            "arquivo_nome": uploaded.name,
-                            "qtd_linhas": int(meta["linhas_excel"]),
-                            "rows": rows_payload,
-                        }
-
-                        try:
-                            result = _supabase_api("current_load", payload, timeout=60)
-                        except Exception as exc:
-                            msg = str(exc)
-                            if "CARGA_DO_DIA_JA_REGISTRADA" in msg:
-                                st.warning(
-                                    "Já existe uma carga oficial registrada para hoje. "
-                                    "O sistema bloqueou uma segunda gravação para evitar duplicidade no banco."
-                                )
-                            elif "DATA_FORA_DE_ORDEM" in msg:
-                                st.error("A data desta carga é anterior a uma carga já registrada no histórico.")
-                            else:
-                                st.error(f"A carga não foi salva no Supabase: {msg}")
-                        else:
-                            st.session_state["_entrega_supabase_sync"] = False
-                            if "_sync_current_from_supabase" in globals():
-                                _sync_current_from_supabase(force=True)
-
-                            st.session_state["_current_load_success"] = (
-                                f"Carga de {today().strftime('%d/%m/%Y')} salva no Supabase com "
-                                f"{int(result.get('ops', meta['ops_unicas']))} OPs, "
-                                f"{int(result.get('eventos', 0))} alteração(ões), "
-                                f"{int(result.get('alertas_criticos', 0))} alerta(s) crítico(s) e "
-                                f"{int(result.get('alertas_atencao', 0))} sinalização(ões) de atenção."
-                            )
-                            st.rerun()
-            except Exception as exc:
-                st.exception(exc)
-
     with tab_pcp:
         pcp_success = st.session_state.pop("_pcp_bulk_success", None)
         if pcp_success:
@@ -2528,7 +2533,7 @@ elif page == "Materiais":
     if "_sync_materials_from_supabase" in globals():
         _sync_materials_from_supabase()
 
-    tab_list, tab_import = st.tabs(["Demanda por projeto", "Importar MRP Consulta"])
+    tab_list = st.container()
 
     mrp_success = st.session_state.pop("_mrp_success", None)
     if mrp_success:
@@ -2768,70 +2773,6 @@ elif page == "Materiais":
                         hide_index=True,
                     )
 
-    with tab_import:
-        st.markdown("#### Importar MRP Consulta")
-        st.caption("O sistema utilizará integralmente a aba 'Demanda_Projeto'.")
-        uploaded_mrp = st.file_uploader("Selecione a planilha MRP Consulta", type=["xlsx", "xls"])
-        if uploaded_mrp is not None:
-            try:
-                raw = pd.read_excel(uploaded_mrp, sheet_name="Demanda_Projeto")
-                missing = [c for c in MATERIAL_COLS if c not in raw.columns]
-                if missing:
-                    st.error(
-                        "A aba Demanda_Projeto não possui todas as colunas esperadas: "
-                        + ", ".join(missing)
-                    )
-                elif raw.shape[1] < 15:
-                    st.error("A aba Demanda_Projeto precisa possuir a coluna O com status do projeto e situação de entrega.")
-                else:
-                    context_col = raw.columns[14]
-                    preview = raw[MATERIAL_COLS + [context_col]].head(20)
-                    st.dataframe(preview, use_container_width=True, hide_index=True)
-                    st.caption(
-                        f"{len(raw)} linha(s) encontradas. A coluna O será preservada e dividida em contexto, status do projeto e situação de entrega."
-                    )
-                    if st.button("Salvar carga MRP", type="primary"):
-                        if "_supabase_api" not in globals():
-                            st.error("Conexão com o Supabase indisponível. O MRP não foi salvo.")
-                        else:
-                            try:
-                                base = import_materials(raw)
-                                rows_payload = json.loads(
-                                    base.to_json(orient="records", date_format="iso", force_ascii=False)
-                                )
-                                result = _supabase_api(
-                                    "save_materials",
-                                    {
-                                        "arquivo_nome": uploaded_mrp.name,
-                                        "rows": rows_payload,
-                                    },
-                                    timeout=90,
-                                )
-                                st.session_state["_entrega_mrp_sync"] = False
-                                st.session_state["_entrega_mrp_summary_sync"] = False
-                                st.session_state["_entrega_mrp_ops_sync"] = False
-                                if "_sync_materials_from_supabase" in globals():
-                                    _sync_materials_from_supabase(force=True)
-                                if "_sync_material_summary_from_supabase" in globals():
-                                    _sync_material_summary_from_supabase(force=True)
-                                if "_sync_material_ops" in locals():
-                                    _sync_material_ops(force=True)
-                                st.session_state["_entrega_supabase_sync"] = False
-                                if "_sync_current_from_supabase" in globals():
-                                    _sync_current_from_supabase(force=True)
-                                st.session_state["_mrp_success"] = (
-                                    f"MRP salvo no Supabase com {int(result.get('linhas', len(base)))} linha(s). "
-                                    "Esta carga será restaurada automaticamente ao abrir o app."
-                                )
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"O MRP não foi salvo no Supabase: {exc}")
-            except ValueError as exc:
-                st.error(str(exc))
-            except Exception as exc:
-                st.exception(exc)
-
-
 
 elif page == "NFs":
     st.markdown("#### Notas fiscais")
@@ -2844,7 +2785,7 @@ elif page == "NFs":
     if nf_success:
         st.success(nf_success)
 
-    tab_nf_base, tab_nf_import = st.tabs(["Base tratada", "Importar relatório"])
+    tab_nf_base = st.container()
 
     with tab_nf_base:
         nf_meta = {}
@@ -2997,221 +2938,399 @@ elif page == "NFs":
                     key="nf_download_export",
                 )
 
-    with tab_nf_import:
-        st.markdown("#### Importar relatório bruto de NFs")
-        st.caption(
-            "Modelo validado: aba '1-Entradas', cabeçalho na linha 2. "
-            "São utilizadas as colunas DIGITACAO, DOCUMENTO, NOME, C.R., NATUREZA, CODIGO, PRODUTO, QUANT e TES."
-        )
-        uploaded_nf = st.file_uploader(
-            "Selecione o relatório de entradas",
-            type=["xlsx", "xls", "xltx"],
-            key="nf_upload",
-        )
 
-        if uploaded_nf is not None:
-            try:
-                raw_nf = pd.read_excel(
-                    uploaded_nf,
-                    sheet_name="1-Entradas",
-                    header=1,
-                    dtype=str,
-                )
-                treated_nf, nf_import_meta = processar_nf_bruto(raw_nf)
-
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Linhas do Excel", nf_import_meta["linhas_brutas"])
-                c2.metric("Linhas tratadas", nf_import_meta["linhas_tratadas"])
-                c3.metric("Lançadas", nf_import_meta["lancadas"])
-                c4.metric("Pré notas", nf_import_meta["pre_notas"])
-
-                if nf_import_meta["linhas_consolidadas"]:
-                    st.info(
-                        f"{nf_import_meta['linhas_consolidadas']} linha(s) repetida(s) foram consolidadas. "
-                        "A comparação desconsidera somente QNT; as quantidades são somadas."
-                    )
-
-                st.markdown("##### Prévia do relatório tratado")
-                st.dataframe(
-                    treated_nf.head(100),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=460,
-                    column_config={"QNT": st.column_config.NumberColumn("QNT")},
-                )
-
-                if st.button("Salvar base tratada de NFs", type="primary", use_container_width=True, key="nf_save"):
-                    try:
-                        payload_rows = _nf_payload_rows(treated_nf)
-                        response = _supabase_api(
-                            "save_nfs",
-                            {
-                                "arquivo_nome": uploaded_nf.name,
-                                "qtd_linhas_brutas": nf_import_meta["linhas_brutas"],
-                                "rows": payload_rows,
-                            },
-                            timeout=120,
-                        ).get("data") or {}
-                        if isinstance(response, list) and len(response) == 1 and isinstance(response[0], dict):
-                            response = response[0]
-                        st.session_state.pop("_nf_export_bytes", None)
-                        st.session_state.pop("_nf_export_name", None)
-                        st.session_state["_nf_success"] = (
-                            f"Base de NFs salva com {int(response.get('linhas_tratadas', len(treated_nf)))} registro(s): "
-                            f"{int(response.get('lancadas', nf_import_meta['lancadas']))} lançada(s) e "
-                            f"{int(response.get('pre_notas', nf_import_meta['pre_notas']))} pré-nota(s)."
-                        )
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível salvar a base de NFs no Supabase: {exc}")
-            except ValueError as exc:
-                st.error(str(exc))
-            except Exception as exc:
-                st.exception(exc)
 elif page == "Histórico":
-    st.markdown("#### Alertas críticos diários")
-    st.caption(
-        "Cada carga oficial registra as OPs que estavam com alerta crítico ativo naquele dia. "
-        "O histórico permanece mesmo após a conclusão da tratativa."
-    )
-
-    daily_alerts = pd.DataFrame()
-    if "_supabase_api" not in globals():
-        st.warning("Conexão com o Supabase indisponível para consultar o registro diário de alertas.")
-    else:
-        try:
-            daily_rows = _supabase_api("list_daily_alerts", timeout=30).get("data") or []
-            daily_alerts = pd.DataFrame(daily_rows)
-        except Exception as exc:
-            st.warning(f"Não foi possível carregar os alertas críticos diários: {exc}")
-
-    if daily_alerts.empty:
-        st.info("Ainda não existem alertas críticos registrados no histórico diário.")
-    else:
-        for col in ["data_referencia", "data_separacao"]:
-            if col in daily_alerts.columns:
-                daily_alerts[col] = pd.to_datetime(daily_alerts[col], errors="coerce").dt.date
-
-        total_registros = len(daily_alerts)
-        total_dias = daily_alerts["data_referencia"].nunique()
-        total_ops = daily_alerts["op"].astype(str).nunique()
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Registros de alerta", total_registros)
-        m2.metric("Dias registrados", total_dias)
-        m3.metric("OPs distintas", total_ops)
-
-        datas_disponiveis = sorted(
-            [d for d in daily_alerts["data_referencia"].dropna().unique().tolist()],
-            reverse=True,
-        )
-        data_labels = [d.strftime("%d/%m/%Y") for d in datas_disponiveis]
-        data_filtro = st.selectbox(
-            "Data do registro",
-            ["Todas"] + data_labels,
-            index=0,
-            key="historico_alertas_data",
+    history_tab_general, history_tab_archive, history_tab_feed = st.tabs(["Histórico geral", "Carga histórica", "Alimentação"])
+    with history_tab_general:
+        st.markdown("#### Alertas críticos diários")
+        st.caption(
+            "Cada carga oficial registra as OPs que estavam com alerta crítico ativo naquele dia. "
+            "O histórico permanece mesmo após a conclusão da tratativa."
         )
 
-        alert_view = daily_alerts.copy()
-        if data_filtro != "Todas":
-            selected_date = datas_disponiveis[data_labels.index(data_filtro)]
-            alert_view = alert_view[alert_view["data_referencia"] == selected_date]
+        daily_alerts = pd.DataFrame()
+        if "_supabase_api" not in globals():
+            st.warning("Conexão com o Supabase indisponível para consultar o registro diário de alertas.")
+        else:
+            try:
+                daily_rows = _supabase_api("list_daily_alerts", timeout=30).get("data") or []
+                daily_alerts = pd.DataFrame(daily_rows)
+            except Exception as exc:
+                st.warning(f"Não foi possível carregar os alertas críticos diários: {exc}")
 
-        alert_cols = [
-            c for c in [
-                "data_referencia", "op", "psy", "cliente", "produto",
-                "data_separacao", "tipo_alerta", "tratativa_pcp",
-            ] if c in alert_view.columns
-        ]
-        st.dataframe(
-            alert_view[alert_cols],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "data_referencia": st.column_config.DateColumn("Data do registro", format="DD/MM/YYYY"),
+        if daily_alerts.empty:
+            st.info("Ainda não existem alertas críticos registrados no histórico diário.")
+        else:
+            for col in ["data_referencia", "data_separacao"]:
+                if col in daily_alerts.columns:
+                    daily_alerts[col] = pd.to_datetime(daily_alerts[col], errors="coerce").dt.date
+
+            total_registros = len(daily_alerts)
+            total_dias = daily_alerts["data_referencia"].nunique()
+            total_ops = daily_alerts["op"].astype(str).nunique()
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Registros de alerta", total_registros)
+            m2.metric("Dias registrados", total_dias)
+            m3.metric("OPs distintas", total_ops)
+
+            datas_disponiveis = sorted(
+                [d for d in daily_alerts["data_referencia"].dropna().unique().tolist()],
+                reverse=True,
+            )
+            data_labels = [d.strftime("%d/%m/%Y") for d in datas_disponiveis]
+            data_filtro = st.selectbox(
+                "Data do registro",
+                ["Todas"] + data_labels,
+                index=0,
+                key="historico_alertas_data",
+            )
+
+            alert_view = daily_alerts.copy()
+            if data_filtro != "Todas":
+                selected_date = datas_disponiveis[data_labels.index(data_filtro)]
+                alert_view = alert_view[alert_view["data_referencia"] == selected_date]
+
+            alert_cols = [
+                c for c in [
+                    "data_referencia", "op", "psy", "cliente", "produto",
+                    "data_separacao", "tipo_alerta", "tratativa_pcp",
+                ] if c in alert_view.columns
+            ]
+            st.dataframe(
+                alert_view[alert_cols],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "data_referencia": st.column_config.DateColumn("Data do registro", format="DD/MM/YYYY"),
+                    "op": "OP",
+                    "psy": "PSY",
+                    "cliente": "Cliente",
+                    "produto": "Produto",
+                    "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                    "tipo_alerta": "Tipo de alerta",
+                    "tratativa_pcp": "Situação da tratativa",
+                },
+            )
+
+            export_detail = daily_alerts.copy().sort_values(
+                ["data_referencia", "op"], ascending=[True, True]
+            )
+            export_detail = export_detail.rename(columns={
+                "data_referencia": "Data do registro",
                 "op": "OP",
                 "psy": "PSY",
                 "cliente": "Cliente",
                 "produto": "Produto",
-                "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                "data_separacao": "Data Separação",
                 "tipo_alerta": "Tipo de alerta",
                 "tratativa_pcp": "Situação da tratativa",
-            },
-        )
+                "registrado_em": "Registrado em",
+            })
 
-        export_detail = daily_alerts.copy().sort_values(
-            ["data_referencia", "op"], ascending=[True, True]
-        )
-        export_detail = export_detail.rename(columns={
-            "data_referencia": "Data do registro",
-            "op": "OP",
-            "psy": "PSY",
-            "cliente": "Cliente",
-            "produto": "Produto",
-            "data_separacao": "Data Separação",
-            "tipo_alerta": "Tipo de alerta",
-            "tratativa_pcp": "Situação da tratativa",
-            "registrado_em": "Registrado em",
-        })
-
-        resumo = (
-            daily_alerts.groupby("data_referencia", dropna=False)["op"]
-            .nunique()
-            .reset_index(name="Quantidade de alertas")
-            .sort_values("data_referencia")
-            .rename(columns={"data_referencia": "Data"})
-        )
-
-        excel_buffer = BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-            export_detail.to_excel(writer, sheet_name="Alertas_Diarios", index=False)
-            resumo.to_excel(writer, sheet_name="Resumo_Diario", index=False)
-
-        st.download_button(
-            "Exportar registro completo em Excel",
-            data=excel_buffer.getvalue(),
-            file_name=f"alertas_criticos_diarios_{today().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="exportar_alertas_diarios",
-        )
-        st.caption("A exportação sempre contém todo o histórico, independentemente do filtro de data acima.")
-
-    st.divider()
-    st.markdown("#### Histórico e rastreabilidade")
-    hist = pd.DataFrame(st.session_state.history)
-    if hist.empty:
-        st.info("Ainda não existem eventos registrados nesta sessão.")
-    else:
-        c1, c2 = st.columns([1.4, 1])
-        search = c1.text_input("Buscar OP / evento / detalhe")
-        event_options = sorted(hist["evento"].dropna().unique().tolist())
-        event_filter = c2.multiselect("Tipo de evento", event_options, default=event_options)
-        view = hist[hist["evento"].isin(event_filter)].copy()
-        if search.strip():
-            term = search.strip().lower()
-            mask = (
-                view["op"].astype(str).str.lower().str.contains(term, na=False)
-                | view["evento"].astype(str).str.lower().str.contains(term, na=False)
-                | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
+            resumo = (
+                daily_alerts.groupby("data_referencia", dropna=False)["op"]
+                .nunique()
+                .reset_index(name="Quantidade de alertas")
+                .sort_values("data_referencia")
+                .rename(columns={"data_referencia": "Data"})
             )
-            view = view[mask]
-        st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
 
-    st.divider()
-    st.markdown("#### Importações realizadas")
-    imports = pd.DataFrame(st.session_state.imports)
-    if imports.empty:
-        st.caption("Nenhuma importação registrada nesta sessão.")
-    else:
-        st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
+            excel_buffer = BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                export_detail.to_excel(writer, sheet_name="Alertas_Diarios", index=False)
+                resumo.to_excel(writer, sheet_name="Resumo_Diario", index=False)
 
-    st.info(
-        "O cronograma, a carga MRP, a base tratada de NFs, o andamento operacional dos materiais e o registro diário "
-        "de alertas críticos utilizam persistência no Supabase."
+            st.download_button(
+                "Exportar registro completo em Excel",
+                data=excel_buffer.getvalue(),
+                file_name=f"alertas_criticos_diarios_{today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="exportar_alertas_diarios",
+            )
+            st.caption("A exportação sempre contém todo o histórico, independentemente do filtro de data acima.")
+
+        st.divider()
+        st.markdown("#### Histórico e rastreabilidade")
+        hist = pd.DataFrame(st.session_state.history)
+        if hist.empty:
+            st.info("Ainda não existem eventos registrados nesta sessão.")
+        else:
+            c1, c2 = st.columns([1.4, 1])
+            search = c1.text_input("Buscar OP / evento / detalhe")
+            event_options = sorted(hist["evento"].dropna().unique().tolist())
+            event_filter = c2.multiselect("Tipo de evento", event_options, default=event_options)
+            view = hist[hist["evento"].isin(event_filter)].copy()
+            if search.strip():
+                term = search.strip().lower()
+                mask = (
+                    view["op"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["evento"].astype(str).str.lower().str.contains(term, na=False)
+                    | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
+                )
+                view = view[mask]
+            st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.markdown("#### Importações realizadas")
+        imports = pd.DataFrame(st.session_state.imports)
+        if imports.empty:
+            st.caption("Nenhuma importação registrada nesta sessão.")
+        else:
+            st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
+
+        st.info(
+            "O cronograma, a carga MRP, a base tratada de NFs, o andamento operacional dos materiais e o registro diário "
+            "de alertas críticos utilizam persistência no Supabase."
+        )
+
+
+def _render_cronograma_feed():
+    st.markdown("#### Importação do Cronograma de Montagem")
+    current_load_success = st.session_state.pop("_current_load_success", None)
+    if current_load_success:
+        st.success(current_load_success)
+    st.caption("Modelo SEN-PCP-FOR-022 • Aba 'Datas esperadas' • A=OP • B=PSY • C=Cliente • D=Produto • V=Separação")
+    st.info("OP repetida não bloqueia a importação. O sistema consolida a OP e considera a MAIOR Data de Separação da coluna V.")
+
+    uploaded = st.file_uploader("Selecione o SEN-PCP-FOR-022", type=["xlsx", "xls"])
+    if uploaded is not None:
+        try:
+            base, meta = read_macro_schedule(uploaded)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Linhas do Excel", meta["linhas_excel"])
+            c2.metric("OPs consolidadas", meta["ops_unicas"])
+            c3.metric("OPs com data", meta["ops_com_data"])
+            c4.metric("OPs sem data", meta["ops_sem_data"])
+
+            if meta["linhas_consolidadas"] > 0:
+                st.warning(
+                    f"{meta['linhas_consolidadas']} linha(s) repetida(s) foram consolidadas. "
+                    "Em cada OP repetida foi mantida a maior data da coluna V."
+                )
+
+            preview = base[base["data_separacao"].notna()].sort_values(["data_separacao", "op"]).head(20)
+            st.dataframe(
+                preview,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
+            )
+
+            st.caption(
+                f"A carga será salva no banco com data de referência {today().strftime('%d/%m/%Y')}. "
+                "É permitida uma carga oficial por dia."
+            )
+            if st.button("Salvar carga atual e comparar histórico", type="primary"):
+                if "_supabase_api" not in globals():
+                    st.error("Conexão com o Supabase indisponível. A carga não foi salva.")
+                else:
+                    rows_payload = []
+                    for _, r in base.iterrows():
+                        d = r["data_separacao"]
+                        if d is None or pd.isna(d):
+                            d_iso = None
+                        else:
+                            if isinstance(d, pd.Timestamp):
+                                d = d.date()
+                            d_iso = d.isoformat()
+                        rows_payload.append(
+                            {
+                                "op": str(r["op"]),
+                                "psy": str(r["psy"] or ""),
+                                "cliente": str(r["cliente"] or ""),
+                                "produto": str(r["produto"] or ""),
+                                "data_separacao": d_iso,
+                            }
+                        )
+
+                    payload = {
+                        "data_referencia": today().isoformat(),
+                        "arquivo_nome": uploaded.name,
+                        "qtd_linhas": int(meta["linhas_excel"]),
+                        "rows": rows_payload,
+                    }
+
+                    try:
+                        result = _supabase_api("current_load", payload, timeout=60)
+                    except Exception as exc:
+                        msg = str(exc)
+                        if "CARGA_DO_DIA_JA_REGISTRADA" in msg:
+                            st.warning(
+                                "Já existe uma carga oficial registrada para hoje. "
+                                "O sistema bloqueou uma segunda gravação para evitar duplicidade no banco."
+                            )
+                        elif "DATA_FORA_DE_ORDEM" in msg:
+                            st.error("A data desta carga é anterior a uma carga já registrada no histórico.")
+                        else:
+                            st.error(f"A carga não foi salva no Supabase: {msg}")
+                    else:
+                        st.session_state["_entrega_supabase_sync"] = False
+                        if "_sync_current_from_supabase" in globals():
+                            _sync_current_from_supabase(force=True)
+
+                        st.session_state["_current_load_success"] = (
+                            f"Carga de {today().strftime('%d/%m/%Y')} salva no Supabase com "
+                            f"{int(result.get('ops', meta['ops_unicas']))} OPs, "
+                            f"{int(result.get('eventos', 0))} alteração(ões), "
+                            f"{int(result.get('alertas_criticos', 0))} alerta(s) crítico(s) e "
+                            f"{int(result.get('alertas_atencao', 0))} sinalização(ões) de atenção."
+                        )
+                        st.rerun()
+        except Exception as exc:
+            st.exception(exc)
+
+
+def _render_mrp_feed():
+    st.markdown("#### Importar MRP Consulta")
+    st.caption("O sistema utilizará integralmente a aba 'Demanda_Projeto'.")
+    uploaded_mrp = st.file_uploader("Selecione a planilha MRP Consulta", type=["xlsx", "xls"])
+    if uploaded_mrp is not None:
+        try:
+            raw = pd.read_excel(uploaded_mrp, sheet_name="Demanda_Projeto")
+            missing = [c for c in MATERIAL_COLS if c not in raw.columns]
+            if missing:
+                st.error(
+                    "A aba Demanda_Projeto não possui todas as colunas esperadas: "
+                    + ", ".join(missing)
+                )
+            elif raw.shape[1] < 15:
+                st.error("A aba Demanda_Projeto precisa possuir a coluna O com status do projeto e situação de entrega.")
+            else:
+                context_col = raw.columns[14]
+                preview = raw[MATERIAL_COLS + [context_col]].head(20)
+                st.dataframe(preview, use_container_width=True, hide_index=True)
+                st.caption(
+                    f"{len(raw)} linha(s) encontradas. A coluna O será preservada e dividida em contexto, status do projeto e situação de entrega."
+                )
+                if st.button("Salvar carga MRP", type="primary"):
+                    if "_supabase_api" not in globals():
+                        st.error("Conexão com o Supabase indisponível. O MRP não foi salvo.")
+                    else:
+                        try:
+                            base = import_materials(raw)
+                            rows_payload = json.loads(
+                                base.to_json(orient="records", date_format="iso", force_ascii=False)
+                            )
+                            result = _supabase_api(
+                                "save_materials",
+                                {
+                                    "arquivo_nome": uploaded_mrp.name,
+                                    "rows": rows_payload,
+                                },
+                                timeout=90,
+                            )
+                            st.session_state["_entrega_mrp_sync"] = False
+                            st.session_state["_entrega_mrp_summary_sync"] = False
+                            st.session_state["_entrega_mrp_ops_sync"] = False
+                            if "_sync_materials_from_supabase" in globals():
+                                _sync_materials_from_supabase(force=True)
+                            if "_sync_material_summary_from_supabase" in globals():
+                                _sync_material_summary_from_supabase(force=True)
+                            if "_sync_material_ops" in locals():
+                                _sync_material_ops(force=True)
+                            st.session_state["_entrega_supabase_sync"] = False
+                            if "_sync_current_from_supabase" in globals():
+                                _sync_current_from_supabase(force=True)
+                            st.session_state["_mrp_success"] = (
+                                f"MRP salvo no Supabase com {int(result.get('linhas', len(base)))} linha(s). "
+                                "Esta carga será restaurada automaticamente ao abrir o app."
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"O MRP não foi salvo no Supabase: {exc}")
+        except ValueError as exc:
+            st.error(str(exc))
+        except Exception as exc:
+            st.exception(exc)
+
+
+def _render_nf_feed():
+    st.markdown("#### Importar relatório bruto de NFs")
+    st.caption(
+        "Modelo validado: aba '1-Entradas', cabeçalho na linha 2. "
+        "São utilizadas as colunas DIGITACAO, DOCUMENTO, NOME, C.R., NATUREZA, CODIGO, PRODUTO, QUANT e TES."
+    )
+    uploaded_nf = st.file_uploader(
+        "Selecione o relatório de entradas",
+        type=["xlsx", "xls", "xltx"],
+        key="nf_upload",
     )
 
+    if uploaded_nf is not None:
+        try:
+            raw_nf = pd.read_excel(
+                uploaded_nf,
+                sheet_name="1-Entradas",
+                header=1,
+                dtype=str,
+            )
+            treated_nf, nf_import_meta = processar_nf_bruto(raw_nf)
 
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Linhas do Excel", nf_import_meta["linhas_brutas"])
+            c2.metric("Linhas tratadas", nf_import_meta["linhas_tratadas"])
+            c3.metric("Lançadas", nf_import_meta["lancadas"])
+            c4.metric("Pré notas", nf_import_meta["pre_notas"])
+
+            if nf_import_meta["linhas_consolidadas"]:
+                st.info(
+                    f"{nf_import_meta['linhas_consolidadas']} linha(s) repetida(s) foram consolidadas. "
+                    "A comparação desconsidera somente QNT; as quantidades são somadas."
+                )
+
+            st.markdown("##### Prévia do relatório tratado")
+            st.dataframe(
+                treated_nf.head(100),
+                use_container_width=True,
+                hide_index=True,
+                height=460,
+                column_config={"QNT": st.column_config.NumberColumn("QNT")},
+            )
+
+            if st.button("Salvar base tratada de NFs", type="primary", use_container_width=True, key="nf_save"):
+                try:
+                    payload_rows = _nf_payload_rows(treated_nf)
+                    response = _supabase_api(
+                        "save_nfs",
+                        {
+                            "arquivo_nome": uploaded_nf.name,
+                            "qtd_linhas_brutas": nf_import_meta["linhas_brutas"],
+                            "rows": payload_rows,
+                        },
+                        timeout=120,
+                    ).get("data") or {}
+                    if isinstance(response, list) and len(response) == 1 and isinstance(response[0], dict):
+                        response = response[0]
+                    st.session_state.pop("_nf_export_bytes", None)
+                    st.session_state.pop("_nf_export_name", None)
+                    st.session_state["_nf_success"] = (
+                        f"Base de NFs salva com {int(response.get('linhas_tratadas', len(treated_nf)))} registro(s): "
+                        f"{int(response.get('lancadas', nf_import_meta['lancadas']))} lançada(s) e "
+                        f"{int(response.get('pre_notas', nf_import_meta['pre_notas']))} pré-nota(s)."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível salvar a base de NFs no Supabase: {exc}")
+        except ValueError as exc:
+            st.error(str(exc))
+        except Exception as exc:
+            st.exception(exc)
+
+
+def _render_feeding_center():
+    st.markdown("### Alimentação das bases")
+    st.caption(
+        "Central de atualização das três bases operacionais. "
+        "Selecione a aba correspondente para carregar Cronograma, MRP Consulta ou NFs."
+    )
+    feed_cron, feed_mrp, feed_nf = st.tabs(["Cronograma", "MRP Consulta", "NFs"])
+    with feed_cron:
+        _render_cronograma_feed()
+    with feed_mrp:
+        _render_mrp_feed()
+    with feed_nf:
+        _render_nf_feed()
 
 
 def _infer_date_from_filename(name):
@@ -3608,7 +3727,10 @@ def _render_historical_loader():
                 st.error(f"Não foi possível gravar a carga: {msg}")
 
 
-if globals().get("page") == "Carga histórica":
-    _render_historical_loader()
+if globals().get("page") == "Histórico":
+    with history_tab_archive:
+        _render_historical_loader()
+    with history_tab_feed:
+        _render_feeding_center()
 
-st.sidebar.caption("UI build 08")
+st.sidebar.caption("UI build 09")
