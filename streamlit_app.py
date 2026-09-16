@@ -2412,7 +2412,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 64
+            <b>Build</b><br>APP core build 65
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2947,12 +2947,8 @@ elif page == "Cronograma":
             with st.expander("Prévia da mensagem para o Teams", expanded=False):
                 st.code(teams_message, language=None)
 
-            st.caption("Copie a mensagem pela prévia acima e depois abra o chat no Teams.")
-            st.link_button(
-                "Abrir chat no Teams",
-                teams_chat_url,
-                use_container_width=True,
-            )
+            st.caption("Copie a mensagem pela prévia acima e abra o chat do Teams pelo link abaixo.")
+            st.markdown(f"[Abrir chat no Teams]({teams_chat_url})")
 
             user_pcp = st.text_input(
                 "Responsável / Operador",
@@ -3159,24 +3155,6 @@ elif page == "Materiais":
             ])
 
             with tab_pending:
-                pending_page_size = 250
-                pending_total = len(pendentes_view)
-                pending_pages = max(1, (pending_total + pending_page_size - 1) // pending_page_size)
-                pending_options = list(range(1, pending_pages + 1))
-                if st.session_state.get("materiais_pending_page") not in pending_options:
-                    st.session_state.pop("materiais_pending_page", None)
-                pending_page = st.selectbox(
-                    "Página de materiais pendentes",
-                    pending_options,
-                    index=0,
-                    key="materiais_pending_page",
-                    label_visibility="collapsed" if pending_pages == 1 else "visible",
-                )
-                pending_start = (int(pending_page) - 1) * pending_page_size
-                pending_end = min(pending_start + pending_page_size, pending_total)
-                pendentes_page_view = pendentes_view.iloc[pending_start:pending_end].copy()
-                if pending_total > pending_page_size:
-                    st.caption(f"Exibindo {pending_start + 1}–{pending_end} de {pending_total} materiais pendentes.")
                 st.caption(
                     "Selecione um ou mais materiais. Ao marcar como separado, eles saem desta lista "
                     "e passam para a aba Marcados como entregue."
@@ -3184,7 +3162,9 @@ elif page == "Materiais":
                 if pendentes_view.empty:
                     st.success("Não existem itens pendentes dentro dos filtros selecionados.")
                 else:
-                    editor = pendentes_page_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
+                    if len(pendentes_view) > 500:
+                        st.caption(f"Exibindo os primeiros 500 de {len(pendentes_view)} itens. Use os filtros de Projeto/Pendência para refinar.")
+                    editor = pendentes_view.head(500).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
                     editor.insert(0, "Selecionar", False)
                     edited = st.data_editor(
                         editor,
@@ -3332,30 +3312,12 @@ elif page == "Materiais":
                         st.caption("Marque os itens desejados na primeira coluna para liberar as ações em lote.")
 
             with tab_done:
-                done_page_size = 250
-                done_total = len(entregues_view)
-                done_pages = max(1, (done_total + done_page_size - 1) // done_page_size)
-                done_options = list(range(1, done_pages + 1))
-                if st.session_state.get("materiais_done_page") not in done_options:
-                    st.session_state.pop("materiais_done_page", None)
-                done_page = st.selectbox(
-                    "Página de materiais separados",
-                    done_options,
-                    index=0,
-                    key="materiais_done_page",
-                    label_visibility="collapsed" if done_pages == 1 else "visible",
-                )
-                done_start = (int(done_page) - 1) * done_page_size
-                done_end = min(done_start + done_page_size, done_total)
-                entregues_page_view = entregues_view.iloc[done_start:done_end].copy()
-                if done_total > done_page_size:
-                    st.caption(f"Exibindo {done_start + 1}–{done_end} de {done_total} materiais separados.")
                 st.caption("Itens já marcados como separados pela equipe.")
                 if entregues_view.empty:
                     st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
                 else:
                     st.dataframe(
-                        entregues_page_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
+                        entregues_view.head(500).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -3467,11 +3429,7 @@ elif page == "NFs":
             st.error(f"Não foi possível carregar a base tratada de NFs: {exc}")
 
         nf_view = _nf_rows_to_frame(rows_nf)
-        shown_nf = len(nf_view)
-        if total_nf > shown_nf:
-            st.caption(f"{total_nf} registro(s) encontrado(s). Exibindo os primeiros {shown_nf}; use os filtros para refinar a consulta.")
-        else:
-            st.caption(f"{total_nf} registro(s) encontrado(s).")
+        st.caption(f"{total_nf} registro(s) encontrado(s).")
         if nf_view.empty:
             st.info("Nenhum registro encontrado para os filtros selecionados.")
         else:
@@ -4397,4 +4355,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 22")
+st.sidebar.caption("UI build 23")
