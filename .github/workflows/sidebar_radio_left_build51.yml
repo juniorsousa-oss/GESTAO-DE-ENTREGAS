@@ -1,0 +1,35 @@
+name: Sidebar radio left build 51
+
+on:
+  push:
+    paths:
+      - '.github/workflows/sidebar_radio_left_build51.yml'
+      - 'scripts/sidebar_radio_left_build51.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply build 51 patch
+        run: |
+          python scripts/sidebar_radio_left_build51.py
+          python -m py_compile streamlit_app.py
+          grep -n 'APP core build 51' streamlit_app.py
+          grep -n 'Build 51' streamlit_app.py
+      - name: Commit update
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Align sidebar selector to left edge"
+          git push
