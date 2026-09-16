@@ -163,7 +163,7 @@ def _sync_bootstrap_from_supabase(force=False):
             st.session_state["_entrega_supabase_current_full"] = pd.DataFrame()
 
         summary = pd.DataFrame(payload.get("mrp_resumo") or [])
-        expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em"]
+        expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em", "qtd_itens_mrp", "status_projeto", "situacao_entrega", "possui_entrega", "contexto_raw", "contexto_parte1", "contexto_parte2"]
         for col in expected:
             if col not in summary.columns:
                 summary[col] = [] if summary.empty else None
@@ -263,7 +263,7 @@ def _sync_material_summary_from_supabase(force=False):
         result = _supabase_api("load_material_summary", timeout=20)
         rows = result.get("data") or []
         summary = pd.DataFrame(rows)
-        expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em"]
+        expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em", "qtd_itens_mrp", "status_projeto", "situacao_entrega", "possui_entrega", "contexto_raw", "contexto_parte1", "contexto_parte2"]
         for col in expected:
             if col not in summary.columns:
                 summary[col] = [] if summary.empty else None
@@ -282,7 +282,7 @@ def _sync_material_summary_from_supabase(force=False):
         st.session_state["_entrega_mrp_summary_error"] = str(exc)
         if "_entrega_mrp_summary" not in st.session_state:
             st.session_state["_entrega_mrp_summary"] = pd.DataFrame(
-                columns=["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em"]
+                columns=["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em", "qtd_itens_mrp", "status_projeto", "situacao_entrega", "possui_entrega", "contexto_raw", "contexto_parte1", "contexto_parte2"]
             )
         return False
 
@@ -303,7 +303,9 @@ def _sync_materials_from_supabase(force=False):
             material_order = [
                 "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
                 "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
-                "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação", "Condição de pendência",
+                "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação",
+                "Contexto Projeto", "Contexto Parte 1", "Contexto Parte 2",
+                "Status Projeto", "Situação Entrega", "Condição de pendência",
             ]
             ordered_cols = [c for c in material_order if c in materials_df.columns]
             extra_cols = [c for c in materials_df.columns if c not in ordered_cols]
@@ -928,7 +930,7 @@ st.set_page_config(
 TZ = ZoneInfo("America/Sao_Paulo")
 STATUS = ["Pendências", "Aguardando separação", "Em separação", "Separado", "Entregue"]
 MANUAL_STATUS = ["Em separação", "Separado"]
-CRONOGRAMA_STATUS = ["Aguardando separação", "Em separação", "Separado"]
+CRONOGRAMA_STATUS = ["Aguardando separação", "Atrasado", "Em separação", "Separado", "Inconsistência PCP"]
 MASTER_COLS = [
     "op", "psy", "cliente", "produto", "data_separacao", "status",
     "alerta_ativo", "tipo_alerta", "tratativa_pcp", "ultimo_comentario",
@@ -939,6 +941,11 @@ MATERIAL_COLS = [
     "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
     "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação",
 ]
+MRP_CONTEXT_COLS = [
+    "Contexto Projeto", "Contexto Parte 1", "Contexto Parte 2",
+    "Status Projeto", "Situação Entrega", "Condição de pendência",
+]
+SPECIAL_PROJECT_STATUSES = {"SUSPENSO", "CANCELADO", "RESÍDUO"}
 
 st.markdown(
     """
@@ -1080,14 +1087,20 @@ def classify_change(old_date, new_date, existed):
     if new_date is None or pd.isna(new_date):
         new_date = None
     h = today()
+    short_limit = h + pd.Timedelta(days=2)
+
     if not existed and new_date is not None:
         if new_date <= h:
             return "NOVA OP FORA DO FLUXO", True, "Nova OP entrou com data para hoje ou já vencida."
+        if new_date <= short_limit.date():
+            return "NOVA OP - ATENÇÃO", False, "Nova OP entrou com prazo de 1 a 2 dias e requer atenção."
         return "NOVA OP", False, "Nova OP incluída no cronograma."
 
     if old_date is None and new_date is not None:
         if new_date <= h:
             return "INCLUSÃO FORA DO FLUXO", True, "OP sem data recebeu programação para hoje ou data vencida."
+        if new_date <= short_limit.date():
+            return "PROGRAMAÇÃO INCLUÍDA - ATENÇÃO", False, "Programação incluída com prazo de 1 a 2 dias."
         return "PROGRAMAÇÃO INCLUÍDA", False, "OP sem data passou a ter programação."
 
     if old_date is not None and new_date is None:
@@ -1096,12 +1109,15 @@ def classify_change(old_date, new_date, existed):
     if old_date is not None and new_date is not None and old_date != new_date:
         if old_date > h and new_date <= h:
             return "ANTECIPAÇÃO FORA DO FLUXO", True, "OP futura foi antecipada para hoje ou data vencida."
+        if new_date < old_date and new_date <= short_limit.date():
+            return "ANTECIPAÇÃO DE CRONOGRAMA - ATENÇÃO", False, "Data antecipada para prazo de 1 a 2 dias."
+        if new_date < old_date and new_date > ref_date and new_date <= ref_date + pd.Timedelta(days=2):
+            return "ANTECIPAÇÃO DE CRONOGRAMA - ATENÇÃO", False, "Data antecipada para prazo de 1 a 2 dias."
         if new_date < old_date:
             return "ANTECIPAÇÃO DE CRONOGRAMA", False, "Data de Separação antecipada."
         return "POSTERGAÇÃO DE CRONOGRAMA", False, "Data de Separação postergada."
 
     return "SEM ALTERAÇÃO", False, ""
-
 
 def import_schedule(base, metadata, source_name):
     previous = st.session_state.snapshot.copy()
@@ -1300,25 +1316,63 @@ def find_col(df, names):
     return cols[0] if cols else None
 
 
+def _normalize_project_status(value):
+    value = str(value or "").strip().upper()
+    aliases = {
+        "RESIDUO": "RESÍDUO",
+        "NAO INFORMADO": "NÃO INFORMADO",
+    }
+    return aliases.get(value, value)
+
+
+def _normalize_delivery_state(value):
+    value = str(value or "").strip().upper()
+    aliases = {
+        "NAO POSSUI ENTREGA": "NÃO POSSUI ENTREGA",
+    }
+    return aliases.get(value, value)
+
+
+def _split_mrp_context(value):
+    raw = "" if pd.isna(value) else str(value).strip()
+    parts = [p.strip() for p in raw.split("|")]
+    parts += [""] * max(0, 4 - len(parts))
+    return raw, parts[0], parts[1], _normalize_project_status(parts[2]), _normalize_delivery_state(parts[3])
+
+
 def import_materials(raw):
     missing = [c for c in MATERIAL_COLS if c not in raw.columns]
     if missing:
         raise ValueError(
             "A aba Demanda_Projeto não possui todas as colunas esperadas: " + ", ".join(missing)
         )
+    if raw.shape[1] < 15:
+        raise ValueError(
+            "A aba Demanda_Projeto precisa possuir a coluna O com o contexto do projeto "
+            "no formato: DATA MRP | CM | STATUS | POSSUI/NÃO POSSUI ENTREGA."
+        )
 
-    # Mantém integralmente as colunas originais da aba Demanda_Projeto e inclui
-    # somente a condição operacional solicitada para identificar pendências.
     base = raw[MATERIAL_COLS].copy().reset_index(drop=True)
+    context_series = raw.iloc[:, 14].reset_index(drop=True)
+    parsed = context_series.map(_split_mrp_context)
+    base["Contexto Projeto"] = parsed.map(lambda x: x[0])
+    base["Contexto Parte 1"] = parsed.map(lambda x: x[1])
+    base["Contexto Parte 2"] = parsed.map(lambda x: x[2])
+    base["Status Projeto"] = parsed.map(lambda x: x[3])
+    base["Situação Entrega"] = parsed.map(lambda x: x[4])
+
     data_cm = pd.to_datetime(base["Data CM"], errors="coerce", dayfirst=True).dt.date
-    atendimento_estoque = (
-        base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
+    atendimento_estoque = base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
+    possui_entrega = base["Situação Entrega"].eq("POSSUI ENTREGA")
+    data_valida = data_cm.notna()
+    cond_data = data_valida & (
+        data_cm.map(lambda d: d < today() if d is not None and not pd.isna(d) else False)
+        | possui_entrega
     )
-    data_vencida = data_cm.notna() & data_cm.map(lambda d: d < today() if d is not None and not pd.isna(d) else False)
-    base["Condição de pendência"] = (data_vencida & atendimento_estoque).map({True: "SIM", False: "NÃO"})
+    base["Condição de pendência"] = (cond_data & atendimento_estoque).map({True: "SIM", False: "NÃO"})
+
     st.session_state.materials = base
     return base
-
 
 def total_items_by_op(materials=None):
     summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
@@ -1375,35 +1429,128 @@ def pending_items_by_op(materials=None):
     return base.groupby("Projeto")["Produto"].nunique().astype(int).to_dict()
 
 
+def _mrp_summary_maps():
+    summary = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
+    status_map = {}
+    delivery_map = {}
+    raw_count_map = {}
+    if isinstance(summary, pd.DataFrame) and not summary.empty:
+        for _, r in summary.iterrows():
+            op = normalize_op(r.get("projeto"))
+            if not op:
+                continue
+            status_map[op] = _normalize_project_status(r.get("status_projeto"))
+            delivery_map[op] = bool(r.get("possui_entrega", False)) or _normalize_delivery_state(r.get("situacao_entrega")) == "POSSUI ENTREGA"
+            try:
+                raw_count_map[op] = int(r.get("qtd_itens_mrp", 0) or 0)
+            except Exception:
+                raw_count_map[op] = 0
+    return status_map, delivery_map, raw_count_map
+
+
 def apply_operational_statuses(schedule, total_item_map):
     if not isinstance(schedule, pd.DataFrame) or schedule.empty:
         return schedule.copy() if isinstance(schedule, pd.DataFrame) else schedule
 
     result = schedule.copy()
-    result["qtd_itens_pendentes"] = (
-        result["op"].astype(str).map(total_item_map).fillna(0).astype(int)
-    )
+    status_map, delivery_map, raw_count_map = _mrp_summary_maps()
+    result["qtd_itens_pendentes"] = result["op"].astype(str).map(total_item_map).fillna(0).astype(int)
+    result["qtd_itens_mrp"] = result["op"].astype(str).map(raw_count_map).fillna(result["qtd_itens_pendentes"]).astype(int)
+    result["status_projeto_mrp"] = result["op"].astype(str).map(status_map).fillna("")
+    result["possui_entrega"] = result["op"].astype(str).map(delivery_map).fillna(False).astype(bool)
+    result["situacao_entrega"] = result["possui_entrega"].map({True: "POSSUI ENTREGA", False: "NÃO POSSUI ENTREGA"})
 
-    effective_status = []
+    if "alerta_status_especial" not in result.columns:
+        result["alerta_status_especial"] = result["status_projeto_mrp"].isin(SPECIAL_PROJECT_STATUSES)
+    else:
+        result["alerta_status_especial"] = result["alerta_status_especial"].fillna(False).astype(bool) | result["status_projeto_mrp"].isin(SPECIAL_PROJECT_STATUSES)
+    if "tipo_status_especial" not in result.columns:
+        result["tipo_status_especial"] = result["status_projeto_mrp"].where(result["alerta_status_especial"], "")
+
+    result["alerta_data_ativo"] = result.get("alerta_ativo", False)
+    if not isinstance(result["alerta_data_ativo"], pd.Series):
+        result["alerta_data_ativo"] = False
+    result["alerta_data_ativo"] = result["alerta_data_ativo"].fillna(False).astype(bool)
+    result["alerta_ativo"] = result["alerta_data_ativo"] | result["alerta_status_especial"]
+
+    if "atencao_ativo" not in result.columns:
+        result["atencao_ativo"] = False
+    result["atencao_ativo"] = result["atencao_ativo"].fillna(False).astype(bool)
+
+    base_statuses = []
+    display_statuses = []
+    groups = []
+    signals = []
+    reasons = []
+
     for _, row in result.iterrows():
         qty = int(row.get("qtd_itens_pendentes", 0) or 0)
         d = row.get("data_separacao")
-        if d is not None and not pd.isna(d) and isinstance(d, pd.Timestamp):
+        if isinstance(d, pd.Timestamp):
             d = d.date()
+        project_status = _normalize_project_status(row.get("status_projeto_mrp"))
+        possui_entrega = bool(row.get("possui_entrega", False))
         stored = str(row.get("status") or "").strip()
+        special = project_status in SPECIAL_PROJECT_STATUSES
+        data_alert = bool(row.get("alerta_data_ativo", False))
+        special_alert = bool(row.get("alerta_status_especial", False)) or special
+        attention = bool(row.get("atencao_ativo", False)) and d is not None and not pd.isna(d) and d >= today()
 
-        if qty == 0:
-            status = "Entregue"
+        if special:
+            base_status = project_status.title() if project_status != "RESÍDUO" else "Resíduo"
+            group = "Especial"
+        elif qty == 0:
+            base_status = "Entregue"
+            group = "Entregues"
+        elif possui_entrega:
+            base_status = "Pendências"
+            group = "Com pendências"
         elif d is not None and not pd.isna(d) and d < today():
-            status = "Pendências"
+            base_status = "Atrasado"
+            group = "Aguardando separação"
         elif stored in MANUAL_STATUS:
-            status = stored
+            base_status = stored
+            group = "Em processo"
         else:
-            status = "Aguardando separação"
+            base_status = "Aguardando separação"
+            group = "Aguardando separação"
 
-        effective_status.append(status)
+        if special:
+            display_status = base_status
+        elif data_alert:
+            display_status = "Inconsistência PCP"
+        else:
+            display_status = base_status
 
-    result["status"] = effective_status
+        signal = ""
+        if special_alert:
+            signal = "CRÍTICO"
+        elif data_alert:
+            signal = "CRÍTICO"
+        elif base_status == "Atrasado":
+            signal = "ATRASADO"
+        elif attention:
+            signal = "ATENÇÃO"
+
+        reason_parts = []
+        if special_alert:
+            reason_parts.append(f"PROJETO {project_status or row.get('tipo_status_especial','STATUS ESPECIAL')}")
+        if data_alert and str(row.get("tipo_alerta") or "").strip():
+            reason_parts.append(str(row.get("tipo_alerta")))
+        if attention and str(row.get("tipo_atencao") or "").strip():
+            reason_parts.append(str(row.get("tipo_atencao")))
+
+        base_statuses.append(base_status)
+        display_statuses.append(display_status)
+        groups.append(group)
+        signals.append(signal)
+        reasons.append(" | ".join(reason_parts))
+
+    result["status_base"] = base_statuses
+    result["status"] = display_statuses
+    result["grupo_operacional"] = groups
+    result["sinalizacao"] = signals
+    result["motivo_alerta"] = reasons
     return result
 
 
@@ -1417,8 +1564,25 @@ def manual_status_allowed(row):
         return False
     if isinstance(d, pd.Timestamp):
         d = d.date()
-    return qty > 0 and d >= today()
+    project_status = _normalize_project_status(row.get("status_projeto_mrp"))
+    possui_entrega = bool(row.get("possui_entrega", False))
+    return qty > 0 and d >= today() and not possui_entrega and project_status not in SPECIAL_PROJECT_STATUSES
 
+
+def _style_operational_rows(df):
+    def style_row(row):
+        status = str(row.get("status", ""))
+        signal = str(row.get("sinalizacao", ""))
+        if signal == "CRÍTICO" or status == "Inconsistência PCP" or status in ("Suspenso", "Cancelado", "Resíduo"):
+            css = "background-color: #fff1f2; color: #881337;"
+        elif signal == "ATRASADO" or status == "Atrasado":
+            css = "background-color: #fff7ed; color: #9a3412;"
+        elif signal == "ATENÇÃO":
+            css = "background-color: #fffbeb; color: #854d0e;"
+        else:
+            css = ""
+        return [css] * len(row)
+    return df.style.apply(style_row, axis=1)
 
 logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
 default_logo_data = ""
@@ -1575,7 +1739,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 44
+            <b>Build</b><br>APP core build 45
         </div>''',
         unsafe_allow_html=True,
     )
@@ -1599,7 +1763,6 @@ st.markdown(
 if page == "Dashboard":
     schedule = st.session_state.schedule
     materials = st.session_state.materials
-    alerts = int(schedule["alerta_ativo"].fillna(False).astype(bool).sum()) if not schedule.empty else 0
 
     if "dashboard_filter" not in st.session_state:
         st.session_state["dashboard_filter"] = "Projetos"
@@ -1616,10 +1779,11 @@ if page == "Dashboard":
     pending_balance_map = pending_items_by_op(materials)
     schedule = apply_operational_statuses(schedule, total_item_map)
     total_projects = len(schedule)
-    total_waiting = int((schedule["status"] == "Aguardando separação").sum()) if not schedule.empty else 0
-    total_in_process = int(schedule["status"].isin(["Em separação", "Separado"]).sum()) if not schedule.empty else 0
-    total_with_pending = int((schedule["status"] == "Pendências").sum()) if not schedule.empty else 0
-    total_delivered = int((schedule["status"] == "Entregue").sum()) if not schedule.empty else 0
+    alerts = int(schedule["alerta_ativo"].fillna(False).astype(bool).sum()) if not schedule.empty else 0
+    total_waiting = int((schedule["grupo_operacional"] == "Aguardando separação").sum()) if not schedule.empty else 0
+    total_in_process = int((schedule["grupo_operacional"] == "Em processo").sum()) if not schedule.empty else 0
+    total_with_pending = int((schedule["grupo_operacional"] == "Com pendências").sum()) if not schedule.empty else 0
+    total_delivered = int((schedule["grupo_operacional"] == "Entregues").sum()) if not schedule.empty else 0
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Projetos", total_projects)
@@ -1634,13 +1798,13 @@ if page == "Dashboard":
 
     dashboard_view = schedule.copy()
     if active_filter == "Aguardando separação":
-        dashboard_view = dashboard_view[dashboard_view["status"] == "Aguardando separação"]
+        dashboard_view = dashboard_view[dashboard_view["grupo_operacional"] == "Aguardando separação"]
     elif active_filter == "Em processo":
-        dashboard_view = dashboard_view[dashboard_view["status"].isin(["Em separação", "Separado"])]
+        dashboard_view = dashboard_view[dashboard_view["grupo_operacional"] == "Em processo"]
     elif active_filter == "Com pendências":
-        dashboard_view = dashboard_view[dashboard_view["status"] == "Pendências"]
+        dashboard_view = dashboard_view[dashboard_view["grupo_operacional"] == "Com pendências"]
     elif active_filter == "Entregues":
-        dashboard_view = dashboard_view[dashboard_view["status"] == "Entregue"]
+        dashboard_view = dashboard_view[dashboard_view["grupo_operacional"] == "Entregues"]
     elif active_filter == "Alertas críticos":
         dashboard_view = dashboard_view[dashboard_view["alerta_ativo"].fillna(False).astype(bool)]
 
@@ -1715,11 +1879,12 @@ if page == "Dashboard":
         dashboard_cols = [
             c for c in [
                 "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
-                "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "tipo_alerta"
+                "sinalizacao", "status_projeto_mrp", "situacao_entrega",
+                "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "motivo_alerta"
             ] if c in dashboard_view.columns
         ]
         st.dataframe(
-            dashboard_view[dashboard_cols],
+            _style_operational_rows(dashboard_view[dashboard_cols]),
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -1733,7 +1898,10 @@ if page == "Dashboard":
                 "status": "Status",
                 "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
                 "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
-                "tipo_alerta": "Alerta",
+                "sinalizacao": "Sinalização",
+                "status_projeto_mrp": "Status MRP",
+                "situacao_entrega": "Situação entrega",
+                "motivo_alerta": "Motivo / atenção",
             },
         )
 
@@ -1757,7 +1925,8 @@ elif page == "Cronograma":
             search = f1.text_input("Buscar OP / cliente / produto")
             status_filter = f2.multiselect("Status", CRONOGRAMA_STATUS, default=CRONOGRAMA_STATUS)
 
-            view = schedule[schedule["status"].isin(status_filter)].copy()
+            operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])].copy()
+            view = operational_schedule[operational_schedule["status"].isin(status_filter)].copy()
             if search.strip():
                 term = search.strip().lower()
                 mask = (
@@ -1775,8 +1944,9 @@ elif page == "Cronograma":
             editor_columns = [
                 c for c in [
                     "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
+                    "sinalizacao", "status_projeto_mrp", "situacao_entrega",
                     "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
-                    "tipo_alerta", "tratativa_pcp", "ultimo_comentario"
+                    "motivo_alerta", "tratativa_pcp", "ultimo_comentario"
                 ] if c in view.columns
             ]
             editor_view = view[editor_columns].copy().reset_index(drop=True)
@@ -1804,7 +1974,10 @@ elif page == "Cronograma":
                     "status": "Status",
                     "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
                     "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
-                    "tipo_alerta": "Alerta",
+                    "sinalizacao": "Sinalização",
+                    "status_projeto_mrp": "Status MRP",
+                    "situacao_entrega": "Situação entrega",
+                    "motivo_alerta": "Motivo / atenção",
                     "tratativa_pcp": "Tratativa PCP",
                     "ultimo_comentario": "Último comentário",
                 },
@@ -2060,8 +2233,9 @@ elif page == "Cronograma":
                             st.session_state["_current_load_success"] = (
                                 f"Carga de {today().strftime('%d/%m/%Y')} salva no Supabase com "
                                 f"{int(result.get('ops', meta['ops_unicas']))} OPs, "
-                                f"{int(result.get('eventos', 0))} alteração(ões) e "
-                                f"{int(result.get('alertas_criticos', 0))} alerta(s) crítico(s)."
+                                f"{int(result.get('eventos', 0))} alteração(ões), "
+                                f"{int(result.get('alertas_criticos', 0))} alerta(s) crítico(s) e "
+                                f"{int(result.get('alertas_atencao', 0))} sinalização(ões) de atenção."
                             )
                             st.rerun()
             except Exception as exc:
@@ -2072,7 +2246,11 @@ elif page == "Cronograma":
         if pcp_success:
             st.success(pcp_success)
         schedule = st.session_state.schedule
-        pending = schedule[schedule["alerta_ativo"]].copy() if not schedule.empty else pd.DataFrame()
+        if not schedule.empty:
+            schedule = apply_operational_statuses(schedule, total_items_by_op())
+            pending = schedule[schedule["alerta_ativo"]].copy()
+        else:
+            pending = pd.DataFrame()
         if pending.empty:
             st.success("Não existem alertas críticos pendentes de tratativa.")
         else:
@@ -2083,7 +2261,7 @@ elif page == "Cronograma":
                 unsafe_allow_html=True,
             )
             st.dataframe(
-                pending[["op", "cliente", "produto", "data_separacao", "tipo_alerta", "tratativa_pcp"]],
+                pending[["op", "cliente", "produto", "data_separacao", "status", "motivo_alerta", "tratativa_pcp"]],
                 use_container_width=True,
                 hide_index=True,
                 column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
@@ -2095,7 +2273,7 @@ elif page == "Cronograma":
             )
             ops_pcp = pending["op"].astype(str).drop_duplicates().tolist()
             linhas_projetos = [
-                f"PROJETO {str(row['op'])} - {fmt_date(row.get('data_separacao'))}"
+                f"PROJETO {str(row['op'])} - {fmt_date(row.get('data_separacao'))} - {str(row.get('motivo_alerta') or row.get('status') or 'ALERTA')}"
                 for _, row in pending.drop_duplicates(subset=["op"]).iterrows()
             ]
             teams_message = "\n".join([
@@ -2164,6 +2342,13 @@ elif page == "Cronograma":
                 value="Operador",
                 key="pcp_bulk_responsavel",
             )
+            comentario_pcp = st.text_area(
+                "Comentário da tratativa (opcional)",
+                placeholder="Registre a orientação, retorno do PCP ou decisão tomada.",
+                key="pcp_bulk_comentario",
+                height=90,
+            )
+            st.caption("Suspensos, cancelados e resíduos permanecem no alerta até o status do MRP mudar.")
 
             if st.button("Concluir ações", type="primary", key="pcp_bulk_concluir"):
                 if "_supabase_api" not in globals():
@@ -2175,6 +2360,7 @@ elif page == "Cronograma":
                             {
                                 "ops": ops_pcp,
                                 "responsavel": user_pcp or "Operador",
+                                "comentario": comentario_pcp.strip() or None,
                             },
                             timeout=45,
                         )
@@ -2226,7 +2412,7 @@ elif page == "Materiais":
 
     with tab_list:
         materials = st.session_state.materials.copy()
-        material_view_cols = MATERIAL_COLS + ["Condição de pendência"]
+        material_view_cols = MATERIAL_COLS + MRP_CONTEXT_COLS
         ordered_cols = [c for c in material_view_cols if c in materials.columns]
         extra_cols = [c for c in materials.columns if c not in ordered_cols]
         if ordered_cols or extra_cols:
@@ -2299,12 +2485,12 @@ elif page == "Materiais":
             view = view.copy()
             if not view.empty:
                 view["Status separação"] = infos.map(lambda x: x["status"])
-                view["Último comentário"] = infos.map(lambda x: x["comentario"])
+                view["Comentário registrado"] = infos.map(lambda x: x["comentario"])
                 view["Responsável"] = infos.map(lambda x: x["responsavel"])
                 view["Atualizado em"] = infos.map(lambda x: x["atualizado_em"])
             else:
                 view["Status separação"] = pd.Series(dtype=str)
-                view["Último comentário"] = pd.Series(dtype=str)
+                view["Comentário registrado"] = pd.Series(dtype=str)
                 view["Responsável"] = pd.Series(dtype=str)
                 view["Atualizado em"] = pd.Series(dtype=object)
 
@@ -2451,11 +2637,14 @@ elif page == "Materiais":
                         "A aba Demanda_Projeto não possui todas as colunas esperadas: "
                         + ", ".join(missing)
                     )
+                elif raw.shape[1] < 15:
+                    st.error("A aba Demanda_Projeto precisa possuir a coluna O com status do projeto e situação de entrega.")
                 else:
-                    preview = raw[MATERIAL_COLS].head(20)
+                    context_col = raw.columns[14]
+                    preview = raw[MATERIAL_COLS + [context_col]].head(20)
                     st.dataframe(preview, use_container_width=True, hide_index=True)
                     st.caption(
-                        f"{len(raw)} linha(s) encontradas. Nenhum cálculo será aplicado aos dados da aba."
+                        f"{len(raw)} linha(s) encontradas. A coluna O será preservada e dividida em contexto, status do projeto e situação de entrega."
                     )
                     if st.button("Salvar carga MRP", type="primary"):
                         if "_supabase_api" not in globals():
@@ -2476,10 +2665,16 @@ elif page == "Materiais":
                                 )
                                 st.session_state["_entrega_mrp_sync"] = False
                                 st.session_state["_entrega_mrp_summary_sync"] = False
+                                st.session_state["_entrega_mrp_ops_sync"] = False
                                 if "_sync_materials_from_supabase" in globals():
                                     _sync_materials_from_supabase(force=True)
                                 if "_sync_material_summary_from_supabase" in globals():
                                     _sync_material_summary_from_supabase(force=True)
+                                if "_sync_material_ops" in locals():
+                                    _sync_material_ops(force=True)
+                                st.session_state["_entrega_supabase_sync"] = False
+                                if "_sync_current_from_supabase" in globals():
+                                    _sync_current_from_supabase(force=True)
                                 st.session_state["_mrp_success"] = (
                                     f"MRP salvo no Supabase com {int(result.get('linhas', len(base)))} linha(s). "
                                     "Esta carga será restaurada automaticamente ao abrir o app."
@@ -2671,11 +2866,15 @@ def _classify_at(old_date, new_date, existed, ref_date):
     if not existed and new_date is not None:
         if new_date <= ref_date:
             return "NOVA OP FORA DO FLUXO", True, "Nova OP entrou com data para o próprio dia ou já vencida."
+        if new_date <= ref_date + pd.Timedelta(days=2):
+            return "NOVA OP - ATENÇÃO", False, "Nova OP entrou com prazo de 1 a 2 dias."
         return "NOVA OP", False, "Nova OP incluída no cronograma."
 
     if old_date is None and new_date is not None:
         if new_date <= ref_date:
             return "INCLUSÃO FORA DO FLUXO", True, "OP sem data recebeu programação para o próprio dia ou data vencida."
+        if new_date <= ref_date + pd.Timedelta(days=2):
+            return "PROGRAMAÇÃO INCLUÍDA - ATENÇÃO", False, "Programação incluída com prazo de 1 a 2 dias."
         return "PROGRAMAÇÃO INCLUÍDA", False, "OP sem data passou a ter programação."
 
     if old_date is not None and new_date is None:
