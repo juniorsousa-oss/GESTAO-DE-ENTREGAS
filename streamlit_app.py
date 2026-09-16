@@ -1057,6 +1057,56 @@ def _markdown_ui(body, *args, **kwargs):
           div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
               color: #ffffff !important;
           }
+
+          /* Build 50 — alinhamento central definitivo do texto */
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              padding-left: 1rem !important;
+              padding-right: 1rem !important;
+              text-align: center !important;
+          }
+
+          /* Remove o controle visual nativo do radio sem afetar o texto */
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div[aria-hidden="true"],
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label > span[aria-hidden="true"],
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div[aria-hidden="true"] {
+              position: absolute !important;
+              opacity: 0 !important;
+              visibility: hidden !important;
+              width: 0 !important;
+              min-width: 0 !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              border: 0 !important;
+              overflow: hidden !important;
+              pointer-events: none !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              flex: 1 1 100% !important;
+              width: 100% !important;
+              min-width: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              text-align: center !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
+              display: block !important;
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              text-align: center !important;
+          }
 '''
         body = body.replace('</style>', extra_css + '\n</style>')
 
@@ -2150,7 +2200,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 49
+            <b>Build</b><br>APP core build 50
         </div>''',
         unsafe_allow_html=True,
     )
