@@ -1,0 +1,36 @@
+name: Filters build 56
+
+on:
+  push:
+    paths:
+      - 'patch_filters_build56.py'
+      - '.github/workflows/filters_build56.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        run: python patch_filters_build56.py
+      - name: Compile
+        run: python -m py_compile streamlit_app.py
+      - name: Verify markers
+        run: |
+          grep -q 'APP core build 56' streamlit_app.py
+          grep -q 'Digitação' streamlit_app.py
+          grep -q 'cronograma_data_filtro' streamlit_app.py
+          grep -q 'load_nf_filters' streamlit_app.py
+      - name: Commit app
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add streamlit_app.py
+          git commit -m 'Build 56: NF filters and dynamic operational filters'
+          git push
