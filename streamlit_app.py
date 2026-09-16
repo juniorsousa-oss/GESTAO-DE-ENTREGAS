@@ -330,6 +330,10 @@ def _sync_materials_from_supabase(force=False):
                 materials_df = materials_df.rename(columns={legacy_situation_col: "Situação Separação"})
             if "Situação Separação" in materials_df.columns:
                 materials_df["Situação Separação"] = materials_df["Situação Separação"].map(_normalize_delivery_state)
+            if {"Situação Separação", "Ação"}.issubset(materials_df.columns):
+                possui_separacao = materials_df["Situação Separação"].eq("POSSUI SEPARAÇÃO")
+                atendimento_estoque = materials_df["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
+                materials_df["Condição de pendência"] = (possui_separacao & atendimento_estoque).map({True: "SIM", False: "NÃO"})
             material_order = [
                 "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
                 "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
@@ -1846,15 +1850,9 @@ def import_materials(raw):
     base["Status Projeto"] = parsed.map(lambda x: x[3])
     base["Situação Separação"] = parsed.map(lambda x: x[4])
 
-    data_cm = pd.to_datetime(base["Data CM"], errors="coerce", dayfirst=True).dt.date
     atendimento_estoque = base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
-    possui_entrega = base["Situação Separação"].eq("POSSUI SEPARAÇÃO")
-    data_valida = data_cm.notna()
-    cond_data = data_valida & (
-        data_cm.map(lambda d: d < today() if d is not None and not pd.isna(d) else False)
-        | possui_entrega
-    )
-    base["Condição de pendência"] = (cond_data & atendimento_estoque).map({True: "SIM", False: "NÃO"})
+    possui_separacao = base["Situação Separação"].eq("POSSUI SEPARAÇÃO")
+    base["Condição de pendência"] = (possui_separacao & atendimento_estoque).map({True: "SIM", False: "NÃO"})
 
     st.session_state.materials = base
     return base
@@ -2010,20 +2008,17 @@ def pending_items_by_op(materials=None):
         return {
             normalize_op(r.get("projeto")): int(r.get("pendencias_com_saldo", 0) or 0)
             for _, r in summary.iterrows()
-            if normalize_op(r.get("projeto"))
         }
 
     materials = st.session_state.materials if materials is None else materials
     if not isinstance(materials, pd.DataFrame) or materials.empty:
         return {}
-    required = {"Projeto", "Produto", "Condição de pendência"}
+    required = {"Projeto", "Produto", "Ação"}
     if not required.issubset(materials.columns):
         return {}
 
-    base = materials.loc[
-        materials["Condição de pendência"].astype(str).str.upper().eq("SIM"),
-        ["Projeto", "Produto"],
-    ].copy()
+    estoque_mask = materials["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
+    base = materials.loc[estoque_mask, ["Projeto", "Produto"]].copy()
     base["Projeto"] = base["Projeto"].map(normalize_op)
     base["Produto"] = base["Produto"].map(normalize_op)
     base = base[(base["Projeto"] != "") & (base["Produto"] != "")]
@@ -2141,6 +2136,11 @@ def apply_operational_statuses(schedule, total_item_map):
         else:
             base_status = "Aguardando separação"
             group = "Aguardando separação"
+
+        if context_known and possui_entrega and not special:
+            group = "Com pendências"
+            if not priority:
+                base_status = "Pendências"
 
         if special:
             display_status = base_status
@@ -2399,7 +2399,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 60
+            <b>Build</b><br>APP core build 61
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4388,4 +4388,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 18")
+st.sidebar.caption("UI build 19")
