@@ -121,9 +121,9 @@ with st.sidebar:
     st.caption("APP core build 38")
 '''
 
-new_block = '''logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
+new_block = """logo_path = Path(__file__).parent / \"config\" / \"logo_setta.svg\"
 logo_bytes = None
-logo_mime = "image/svg+xml"
+logo_mime = \"image/svg+xml\"
 try:
     logo_bytes = logo_path.read_bytes()
 except OSError:
@@ -131,44 +131,44 @@ except OSError:
 
 with st.sidebar:
     st.markdown(
-        '''<div class="sidebar-brand">
-            <div class="sidebar-brand-title">GESTÃO DE ENTREGAS</div>
-            <div class="sidebar-brand-sub">Controle operacional da produção</div>
+        '''<div class=\"sidebar-brand\">
+            <div class=\"sidebar-brand-title\">GESTÃO DE ENTREGAS</div>
+            <div class=\"sidebar-brand-sub\">Controle operacional da produção</div>
         </div>''',
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="sidebar-section-label">Navegação</div>', unsafe_allow_html=True)
+    st.markdown('<div class=\"sidebar-section-label\">Navegação</div>', unsafe_allow_html=True)
     page = st.radio(
-        "Página",
-        ["Dashboard", "Cronograma", "Carga histórica", "Materiais", "Histórico"],
-        label_visibility="collapsed",
+        \"Página\",
+        [\"Dashboard\", \"Cronograma\", \"Carga histórica\", \"Materiais\", \"Histórico\"],
+        label_visibility=\"collapsed\",
     )
 
     st.divider()
-    st.markdown('<div class="sidebar-section-label">Identidade visual</div>', unsafe_allow_html=True)
+    st.markdown('<div class=\"sidebar-section-label\">Identidade visual</div>', unsafe_allow_html=True)
     logo_empresa = st.file_uploader(
-        "Alterar logo do cabeçalho",
-        type=["png", "jpg", "jpeg", "svg"],
-        key="entrega_logo_empresa",
-        help="A imagem selecionada substitui a logo padrão durante a sessão atual.",
+        \"Alterar logo do cabeçalho\",
+        type=[\"png\", \"jpg\", \"jpeg\", \"svg\"],
+        key=\"entrega_logo_empresa\",
+        help=\"A imagem selecionada substitui a logo padrão durante a sessão atual.\",
     )
     if logo_empresa is not None:
         logo_bytes = logo_empresa.getvalue()
-        logo_mime = logo_empresa.type or "image/png"
+        logo_mime = logo_empresa.type or \"image/png\"
 
     if logo_bytes:
-        sidebar_logo_b64 = base64.b64encode(logo_bytes).decode("ascii")
+        sidebar_logo_b64 = base64.b64encode(logo_bytes).decode(\"ascii\")
         st.markdown(
-            f'<div class="sidebar-logo-preview"><img src="data:{logo_mime};base64,{sidebar_logo_b64}" alt="Logo atual"></div>',
+            f'<div class=\"sidebar-logo-preview\"><img src=\"data:{logo_mime};base64,{sidebar_logo_b64}\" alt=\"Logo atual\"></div>',
             unsafe_allow_html=True,
         )
-    st.caption("A logo é aplicada ao cabeçalho sem alterar as demais configurações do app.")
+    st.caption(\"A logo é aplicada ao cabeçalho sem alterar as demais configurações do app.\")
 
     st.divider()
-    st.markdown('<div class="sidebar-section-label">Informações</div>', unsafe_allow_html=True)
+    st.markdown('<div class=\"sidebar-section-label\">Informações</div>', unsafe_allow_html=True)
     st.markdown(
-        f'''<div class="sidebar-info-card">
+        f'''<div class=\"sidebar-info-card\">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
             <b>Build</b><br>APP core build 39
@@ -177,21 +177,21 @@ with st.sidebar:
     )
 
 if logo_bytes:
-    encoded_logo = base64.b64encode(logo_bytes).decode("ascii")
-    logo_html = f'<img src="data:{logo_mime};base64,{encoded_logo}" alt="Setta">'
+    encoded_logo = base64.b64encode(logo_bytes).decode(\"ascii\")
+    logo_html = f'<img src=\"data:{logo_mime};base64,{encoded_logo}\" alt=\"Setta\">'
 else:
-    logo_html = '<div style="font-size:2rem;font-weight:800;color:#202124;">SETTA</div>'
+    logo_html = '<div style=\"font-size:2rem;font-weight:800;color:#202124;\">SETTA</div>'
 
 st.markdown(
-    f'<div class="setta-logo-card">{logo_html}</div>',
+    f'<div class=\"setta-logo-card\">{logo_html}</div>',
     unsafe_allow_html=True,
 )
-st.markdown('<h1 class="app-title">GESTÃO DE ENTREGAS | SETTA</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class=\"app-title\">GESTÃO DE ENTREGAS | SETTA</h1>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="app-sub">Cronograma de montagem • Materiais • Histórico • Dashboard</p>',
+    '<p class=\"app-sub\">Cronograma de montagem • Materiais • Histórico • Dashboard</p>',
     unsafe_allow_html=True,
 )
-'''
+"""
 
 if old_block not in text:
     raise SystemExit('Main logo/sidebar block not found')
