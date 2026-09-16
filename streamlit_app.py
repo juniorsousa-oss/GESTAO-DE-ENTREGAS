@@ -1381,6 +1381,9 @@ MRP_CONTEXT_COLS = [
     "Contexto Projeto", "Contexto Parte 1", "Contexto Parte 2",
     "Status Projeto", "Situação Separação", "Condição de pendência",
 ]
+MATERIAL_HIDDEN_VIEW_COLS = [
+    "Contexto Parte 1", "Contexto Parte 2", "Status Projeto", "Situação Separação",
+]
 SPECIAL_PROJECT_STATUSES = {"SUSPENSO", "CANCELADO", "RESÍDUO"}
 NF_REQUIRED_COLS = [
     "DIGITACAO", "DOCUMENTO", "NOME", "C.R.", "NATUREZA",
@@ -2396,7 +2399,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 57
+            <b>Build</b><br>APP core build 60
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2538,7 +2541,6 @@ if page == "Dashboard":
         dashboard_cols = [
             c for c in [
                 "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
-                "sinalizacao", "status_projeto_mrp", "situacao_entrega",
                 "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "motivo_alerta"
             ] if c in dashboard_view.columns
         ]
@@ -2642,8 +2644,7 @@ elif page == "Cronograma":
             editor_columns = [
                 c for c in [
                     "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
-                    "sinalizacao", "status_projeto_mrp", "situacao_entrega",
-                    "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
+                        "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
                     "motivo_alerta", "tratativa_pcp", "ultimo_comentario"
                 ] if c in view.columns
             ]
@@ -3108,24 +3109,62 @@ elif page == "Materiais":
                     view["Projeto"].map(normalize_op).eq(projeto_filtro)
                 ]
 
-            priority_ops_df = st.session_state.get("_entrega_mrp_ops", pd.DataFrame())
-            priority_keys = set()
-            if isinstance(priority_ops_df, pd.DataFrame) and not priority_ops_df.empty:
-                priority_rows = priority_ops_df[priority_ops_df["status"].astype(str).eq(PRIORITY_STATUS)]
-                priority_keys = {
-                    (normalize_op(r.get("projeto")), normalize_op(r.get("produto")))
-                    for _, r in priority_rows.iterrows()
-                }
-            current_keys = [
-                (normalize_op(r.get("Projeto")), normalize_op(r.get("Produto")))
-                for _, r in view.iterrows()
-            ]
-            has_priority = any(k in priority_keys for k in current_keys)
-            has_nonpriority = any(k not in priority_keys for k in current_keys)
+            # Cruza o andamento operacional de forma vetorizada. Evita iterrows/apply
+            # sobre milhares de linhas em cada rerun do Streamlit.
+            ops_df = st.session_state.get("_entrega_mrp_ops", pd.DataFrame())
+            view = view.copy()
+            view["_projeto_key"] = (
+                view["Projeto"].fillna("").astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+            )
+            view["_produto_key"] = (
+                view["Produto"].fillna("").astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+            )
+
+            if isinstance(ops_df, pd.DataFrame) and not ops_df.empty:
+                ops_work = ops_df.copy()
+                for col, default in {
+                    "projeto": "", "produto": "", "status": "Pendente",
+                    "ultimo_comentario": "", "responsavel": "", "atualizado_em": None,
+                }.items():
+                    if col not in ops_work.columns:
+                        ops_work[col] = default
+                ops_work["_projeto_key"] = (
+                    ops_work["projeto"].fillna("").astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                )
+                ops_work["_produto_key"] = (
+                    ops_work["produto"].fillna("").astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                )
+                ops_work = (
+                    ops_work[[
+                        "_projeto_key", "_produto_key", "status", "ultimo_comentario",
+                        "responsavel", "atualizado_em",
+                    ]]
+                    .drop_duplicates(subset=["_projeto_key", "_produto_key"], keep="last")
+                    .rename(columns={
+                        "status": "Status separação",
+                        "ultimo_comentario": "Comentário registrado",
+                        "responsavel": "Responsável",
+                        "atualizado_em": "Atualizado em",
+                    })
+                )
+                view = view.merge(ops_work, on=["_projeto_key", "_produto_key"], how="left", sort=False)
+            else:
+                view["Status separação"] = "Pendente"
+                view["Comentário registrado"] = ""
+                view["Responsável"] = ""
+                view["Atualizado em"] = None
+
+            view["Status separação"] = view["Status separação"].fillna("Pendente").astype(str)
+            view["Comentário registrado"] = view["Comentário registrado"].fillna("").astype(str)
+            view["Responsável"] = view["Responsável"].fillna("").astype(str)
+            view["Prioridade solicitada"] = view["Status separação"].eq(PRIORITY_STATUS)
+            view["Sinalização"] = view["Prioridade solicitada"].map(lambda v: "🟣 PRIORIDADE" if bool(v) else "")
+
+            priority_values = view["Prioridade solicitada"].fillna(False).astype(bool)
             prioridade_options = ["Todos"]
-            if has_priority:
+            if bool(priority_values.any()):
                 prioridade_options.append(PRIORITY_STATUS)
-            if has_nonpriority:
+            if bool((~priority_values).any()):
                 prioridade_options.append("Sem prioridade")
             prioridade_material_filtro = f_prioridade.selectbox(
                 "Prioridade",
@@ -3133,47 +3172,6 @@ elif page == "Materiais":
                 index=0,
                 key="materiais_prioridade_filtro",
             )
-
-            # Vincula o andamento operacional sem alterar a base original do MRP.
-            ops_df = st.session_state.get("_entrega_mrp_ops", pd.DataFrame())
-            ops_lookup = {}
-            if isinstance(ops_df, pd.DataFrame) and not ops_df.empty:
-                for _, op_row in ops_df.iterrows():
-                    key = (
-                        normalize_op(op_row.get("projeto")),
-                        normalize_op(op_row.get("produto")),
-                    )
-                    ops_lookup[key] = {
-                        "status": str(op_row.get("status") or "Pendente"),
-                        "comentario": str(op_row.get("ultimo_comentario") or ""),
-                        "responsavel": str(op_row.get("responsavel") or ""),
-                        "atualizado_em": op_row.get("atualizado_em"),
-                    }
-
-            def _op_info(row):
-                key = (normalize_op(row.get("Projeto")), normalize_op(row.get("Produto")))
-                return ops_lookup.get(key, {
-                    "status": "Pendente",
-                    "comentario": "",
-                    "responsavel": "",
-                    "atualizado_em": None,
-                })
-
-            infos = view.apply(_op_info, axis=1) if not view.empty else pd.Series(dtype=object)
-            view = view.copy()
-            if not view.empty:
-                view["Status separação"] = infos.map(lambda x: x["status"])
-                view["Comentário registrado"] = infos.map(lambda x: x["comentario"])
-                view["Responsável"] = infos.map(lambda x: x["responsavel"])
-                view["Atualizado em"] = infos.map(lambda x: x["atualizado_em"])
-            else:
-                view["Status separação"] = pd.Series(dtype=str)
-                view["Comentário registrado"] = pd.Series(dtype=str)
-                view["Responsável"] = pd.Series(dtype=str)
-                view["Atualizado em"] = pd.Series(dtype=object)
-
-            view["Prioridade solicitada"] = view["Status separação"].astype(str).eq(PRIORITY_STATUS)
-            view["Sinalização"] = view["Prioridade solicitada"].map(lambda v: "🟣 PRIORIDADE" if bool(v) else "")
             if prioridade_material_filtro == PRIORITY_STATUS:
                 view = view[view["Prioridade solicitada"]].copy()
             elif prioridade_material_filtro == "Sem prioridade":
@@ -3181,6 +3179,7 @@ elif page == "Materiais":
 
             view = view.assign(_priority_sort=view["Prioridade solicitada"].astype(bool))
             view = view.sort_values(["_priority_sort", "Projeto", "Produto"], ascending=[False, True, True]).drop(columns=["_priority_sort"])
+            view = view.drop(columns=["_projeto_key", "_produto_key"], errors="ignore")
 
             pendentes_view = view[view["Status separação"] != "Separado"].reset_index(drop=True)
             entregues_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
@@ -3198,7 +3197,7 @@ elif page == "Materiais":
                 if pendentes_view.empty:
                     st.success("Não existem itens pendentes dentro dos filtros selecionados.")
                 else:
-                    editor = pendentes_view.copy()
+                    editor = pendentes_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
                     editor.insert(0, "Selecionar", False)
                     edited = st.data_editor(
                         editor,
@@ -3351,7 +3350,7 @@ elif page == "Materiais":
                     st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
                 else:
                     st.dataframe(
-                        entregues_view,
+                        entregues_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -3369,15 +3368,18 @@ elif page == "NFs":
     if nf_success:
         st.success(nf_success)
 
-    nf_meta = {}
-    try:
-        meta_rows = _supabase_api("load_nf_summary", timeout=20).get("data") or []
-        if isinstance(meta_rows, list) and meta_rows:
-            nf_meta = meta_rows[0]
-        elif isinstance(meta_rows, dict):
-            nf_meta = meta_rows
-    except Exception as exc:
-        st.warning(f"Não foi possível consultar o resumo de NFs: {exc}")
+    nf_meta = st.session_state.get("_nf_meta_cache") or {}
+    if not nf_meta:
+        try:
+            meta_rows = _supabase_api("load_nf_summary", timeout=20).get("data") or []
+            if isinstance(meta_rows, list) and meta_rows:
+                nf_meta = meta_rows[0]
+            elif isinstance(meta_rows, dict):
+                nf_meta = meta_rows
+            if isinstance(nf_meta, dict) and nf_meta:
+                st.session_state["_nf_meta_cache"] = nf_meta
+        except Exception as exc:
+            st.warning(f"Não foi possível consultar o resumo de NFs: {exc}")
 
     if not nf_meta:
         st.info("Ainda não existe uma base de NFs salva. Utilize Histórico > Alimentação > NFs para realizar a primeira carga.")
@@ -3395,15 +3397,18 @@ elif page == "NFs":
             + (f" • Atualizado em: {atualizado_txt}" if atualizado_txt else "")
         )
 
-        nf_filter_meta = {}
-        try:
-            nf_filter_meta = _supabase_api("load_nf_filters", timeout=20).get("data") or {}
-            if isinstance(nf_filter_meta, list) and len(nf_filter_meta) == 1 and isinstance(nf_filter_meta[0], dict):
-                nf_filter_meta = nf_filter_meta[0]
-            if not isinstance(nf_filter_meta, dict):
-                nf_filter_meta = {}
-        except Exception as exc:
-            st.warning(f"Não foi possível carregar as opções de filtro das NFs: {exc}")
+        nf_filter_meta = st.session_state.get("_nf_filter_meta_cache") or {}
+        if not nf_filter_meta:
+            try:
+                nf_filter_meta = _supabase_api("load_nf_filters", timeout=20).get("data") or {}
+                if isinstance(nf_filter_meta, list) and len(nf_filter_meta) == 1 and isinstance(nf_filter_meta[0], dict):
+                    nf_filter_meta = nf_filter_meta[0]
+                if not isinstance(nf_filter_meta, dict):
+                    nf_filter_meta = {}
+                if nf_filter_meta:
+                    st.session_state["_nf_filter_meta_cache"] = nf_filter_meta
+            except Exception as exc:
+                st.warning(f"Não foi possível carregar as opções de filtro das NFs: {exc}")
 
         class_options = ["Todos"] + [str(v) for v in (nf_filter_meta.get("classificacoes") or []) if str(v).strip()]
         nature_options = ["Todos"] + [str(v) for v in (nf_filter_meta.get("naturezas") or []) if str(v).strip()]
@@ -3950,6 +3955,8 @@ def _render_nf_feed():
                     st.session_state.pop("_nf_export_bytes", None)
                     st.session_state.pop("_nf_export_name", None)
                     st.session_state["_entrega_feed_status_sync"] = False
+                    st.session_state.pop("_nf_meta_cache", None)
+                    st.session_state.pop("_nf_filter_meta_cache", None)
                     st.session_state.pop("_nf_export_bytes", None)
                     st.session_state.pop("_nf_export_name", None)
                     st.session_state["_nf_success"] = (
@@ -4381,4 +4388,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 17")
+st.sidebar.caption("UI build 18")
