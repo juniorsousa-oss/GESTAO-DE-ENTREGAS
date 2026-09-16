@@ -2118,12 +2118,12 @@ def apply_operational_statuses(schedule, total_item_map):
         if special:
             base_status = project_status.title() if project_status != "RESÍDUO" else "Resíduo"
             group = "Especial"
-        elif priority:
-            base_status = PRIORITY_STATUS
-            group = "Em processo"
         elif qty == 0:
             base_status = "Entregue"
             group = "Entregues"
+        elif priority:
+            base_status = PRIORITY_STATUS
+            group = "Em processo"
         elif not context_known:
             # Fallback da base antiga: preserva a regra anterior até a primeira carga MRP com coluna O.
             if d is not None and not pd.isna(d) and d < today():
@@ -2155,20 +2155,22 @@ def apply_operational_statuses(schedule, total_item_map):
 
         if special:
             display_status = base_status
-        elif priority:
-            display_status = PRIORITY_STATUS
         elif data_alert:
             display_status = "Inconsistência PCP"
+        elif qty == 0:
+            display_status = "Entregue"
+        elif priority:
+            display_status = PRIORITY_STATUS
         else:
             display_status = base_status
 
         signal = ""
         if special_alert:
             signal = "CRÍTICO"
-        elif priority:
-            signal = "PRIORIDADE"
         elif data_alert:
             signal = "CRÍTICO"
+        elif priority:
+            signal = "PRIORIDADE"
         elif base_status == "Atrasado":
             signal = "ATRASADO"
         elif attention:
@@ -2410,7 +2412,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 63
+            <b>Build</b><br>APP core build 64
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4395,4 +4397,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 21")
+st.sidebar.caption("UI build 22")
