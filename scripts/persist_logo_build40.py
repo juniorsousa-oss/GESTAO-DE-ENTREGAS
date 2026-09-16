@@ -81,7 +81,7 @@ if start == -1 or end == -1:
     raise SystemExit('Logo/sidebar block not found')
 end += len(end_marker)
 
-new_block = r'''logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
+new_block = r"""logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
 default_logo_data = ""
 default_logo_mime = "image/svg+xml"
 try:
@@ -183,7 +183,7 @@ st.markdown(
     '<p class="app-sub">Cronograma de montagem • Materiais • Histórico • Dashboard</p>',
     unsafe_allow_html=True,
 )
-'''
+"""
 
 text = text[:start] + new_block + text[end:]
 path.write_text(text, encoding='utf-8')
