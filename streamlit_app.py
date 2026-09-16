@@ -2412,7 +2412,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 65
+            <b>Build</b><br>APP core build 66
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4355,4 +4355,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 23")
+st.sidebar.caption("UI build 24")
