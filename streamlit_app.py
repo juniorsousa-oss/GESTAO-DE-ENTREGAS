@@ -322,16 +322,40 @@ def _markdown_ui(body, *args, **kwargs):
         body = body.replace(
             '.block-container {padding-top: 1.25rem; padding-bottom: 2rem;}',
             '''.block-container {
-                padding-top: 4.4rem !important;
-                padding-bottom: 2.2rem !important;
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
+                max-width: 1780px !important;
+                padding-top: 3.2rem !important;
+                padding-left: 2.7rem !important;
+                padding-right: 2.7rem !important;
+                padding-bottom: 3rem !important;
                 width: 100% !important;
-                max-width: 100% !important;
             }'''
         )
 
         extra_css = '''
+          [data-testid="stAppViewContainer"] {
+              background: #f4f7fb !important;
+          }
+
+          [data-testid="stHeader"] {
+              background: rgba(255, 255, 255, 0.96) !important;
+          }
+
+          section[data-testid="stSidebar"] {
+              background: #ffffff !important;
+              border-right: 1px solid #e8ebf0 !important;
+          }
+
+          section[data-testid="stSidebar"] .block-container {
+              padding-top: 1.6rem !important;
+              padding-left: 1rem !important;
+              padding-right: 1rem !important;
+          }
+
+          section[data-testid="stSidebar"] h2,
+          section[data-testid="stSidebar"] h3 {
+              color: #111111 !important;
+          }
+
           [data-testid="stAppViewContainer"] > .main,
           [data-testid="stAppViewContainer"] .main,
           [data-testid="stMain"],
@@ -358,18 +382,65 @@ def _markdown_ui(body, *args, **kwargs):
               flex-basis: 0 !important;
           }
 
+          .setta-logo-card {
+              width: 100%;
+              min-height: 128px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              background: #ffffff;
+              border: 1px solid #e5e8ee;
+              border-radius: 16px;
+              box-shadow: 0 4px 14px rgba(24, 39, 75, 0.08);
+              box-sizing: border-box;
+              margin: 0 0 2.55rem 0;
+              padding: 1.1rem 2rem;
+          }
+
+          .setta-logo-card img {
+              display: block;
+              width: auto;
+              height: auto;
+              max-width: 205px;
+              max-height: 86px;
+              object-fit: contain;
+          }
+
           .app-title {
-              font-size: 1.9rem !important;
-              line-height: 1.2 !important;
-              padding-top: .15rem !important;
-              color: #0f172a !important;
-              letter-spacing: -.025em;
+              margin: 0 !important;
+              padding: 0 !important;
+              font-size: 2.55rem !important;
+              line-height: 1.08 !important;
+              font-weight: 800 !important;
+              letter-spacing: -0.04em !important;
+              color: #050505 !important;
           }
 
           .app-sub {
-              color: #64748b !important;
+              margin-top: .72rem !important;
+              margin-bottom: 1.65rem !important;
+              color: #4f5661 !important;
               font-size: .94rem !important;
-              padding-bottom: .35rem;
+              line-height: 1.35 !important;
+          }
+
+          @media (max-width: 900px) {
+              .block-container {
+                  padding-top: 2rem !important;
+                  padding-left: 1rem !important;
+                  padding-right: 1rem !important;
+              }
+              .setta-logo-card {
+                  min-height: 105px;
+                  margin-bottom: 1.8rem;
+              }
+              .setta-logo-card img {
+                  max-width: 170px;
+                  max-height: 72px;
+              }
+              .app-title {
+                  font-size: 2rem !important;
+              }
           }
 
           .kpi-card {
@@ -628,7 +699,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="Gestão de Entregas à Produção",
+    page_title="GESTÃO DE ENTREGAS | SETTA",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -1129,56 +1200,31 @@ def manual_status_allowed(row):
     return qty > 0 and d >= today()
 
 
-st.markdown('<div class="app-title">Gestão de Entregas à Produção</div>', unsafe_allow_html=True)
-st.markdown('<div class="app-sub">Cronograma de Montagem • Materiais • Histórico • Dashboard</div>', unsafe_allow_html=True)
+logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
+try:
+    logo_bytes = logo_path.read_bytes()
+    encoded_logo = base64.b64encode(logo_bytes).decode("ascii")
+    logo_html = f'<img src="data:image/svg+xml;base64,{encoded_logo}" alt="Setta">'
+except OSError:
+    logo_html = '<div style="font-size:2rem;font-weight:800;color:#202124;">SETTA</div>'
+
+st.markdown(
+    f'<div class="setta-logo-card">{logo_html}</div>',
+    unsafe_allow_html=True,
+)
+st.markdown('<h1 class="app-title">GESTÃO DE ENTREGAS | SETTA</h1>', unsafe_allow_html=True)
+st.markdown(
+    '<p class="app-sub">Cronograma de montagem • Materiais • Histórico • Dashboard</p>',
+    unsafe_allow_html=True,
+)
 
 with st.sidebar:
-    st.markdown(
-        """
-        <style>
-        section[data-testid="stSidebar"] .logo-preview {
-            width: 100%;
-            height: 5.5rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border: 1px dashed rgba(49, 51, 63, 0.28);
-            border-radius: 0.5rem;
-            background: #fff;
-            box-sizing: border-box;
-            overflow: hidden;
-            margin: 0 0 1rem 0;
-        }
-        section[data-testid="stSidebar"] .logo-preview img {
-            display: block;
-            max-width: 145px;
-            max-height: 78px;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
-    try:
-        logo_bytes = logo_path.read_bytes()
-        encoded_logo = base64.b64encode(logo_bytes).decode("ascii")
-        st.markdown(
-            f'<div class="logo-preview"><img src="data:image/svg+xml;base64,{encoded_logo}" alt="Logo Setta"></div>',
-            unsafe_allow_html=True,
-        )
-    except OSError:
-        pass
-
     st.markdown("### Navegação")
     page = st.radio("Página", ["Dashboard", "Cronograma", "Carga histórica", "Materiais", "Histórico"], label_visibility="collapsed")
     st.divider()
     st.caption(f"Data operacional: {today().strftime('%d/%m/%Y')}")
     st.caption("Versão: validação do cronograma")
-    st.caption("APP core build 37")
+    st.caption("APP core build 38")
 
 
 if page == "Dashboard":
