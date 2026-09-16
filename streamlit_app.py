@@ -789,7 +789,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="GESTÃO DE ENTREGAS | SETTA",
-    page_icon="📦",
+    page_icon=str(Path(__file__).parent / "favicon.png.png"),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -1372,7 +1372,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 40
+            <b>Build</b><br>APP core build 41
         </div>''',
         unsafe_allow_html=True,
     )
