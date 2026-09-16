@@ -59,8 +59,8 @@ if old_done_start not in text:
     raise SystemExit("Done tab anchor not found")
 text = text.replace(old_done_start, new_done_start, 1)
 
-old_done_df = '''                        entregues_view,\n                        use_container_width=True,\n'''
-new_done_df = '''                        entregues_page_view,\n                        use_container_width=True,\n'''
+old_done_df = '''                        entregues_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),\n                        use_container_width=True,\n'''
+new_done_df = '''                        entregues_page_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),\n                        use_container_width=True,\n'''
 if old_done_df not in text:
     raise SystemExit("Done dataframe source not found")
 text = text.replace(old_done_df, new_done_df, 1)
