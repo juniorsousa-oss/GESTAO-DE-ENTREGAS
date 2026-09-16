@@ -1387,6 +1387,13 @@ NF_REQUIRED_COLS = [
     "CODIGO", "PRODUTO", "QUANT", "TES",
 ]
 NF_OUTPUT_COLS = ["Classificação", "Digitação", "Documento", "Fornecedor", "Código", "Produto", "QNT", "Natureza"]
+NF_ALLOWED_NATURES = {
+    "SIMPLES REMESSA",
+    "COMPRA DE MATERIA PRIMA",
+    "IMPORTACAO",
+    "CONSERTO MERCADORIA - ENTRADA",
+    "INDUSTRIALIZACAO POR ENCOMENDA",
+}
 
 st.markdown(
     """
@@ -1877,6 +1884,18 @@ def processar_nf_bruto(raw):
             "O relatório de NFs não possui todas as colunas esperadas: " + ", ".join(missing)
         )
 
+    linhas_excel = int(len(raw))
+    natureza_normalizada = _nf_text(raw["NATUREZA"]).str.upper()
+    elegiveis = natureza_normalizada.isin(NF_ALLOWED_NATURES)
+    linhas_ignoradas_natureza = int((~elegiveis).sum())
+    raw = raw.loc[elegiveis].copy()
+
+    if raw.empty:
+        raise ValueError(
+            "Nenhuma linha do relatório possui uma das naturezas consideradas pelo Gestão de Entregas."
+        )
+
+    raw["NATUREZA"] = _nf_text(raw["NATUREZA"]).str.upper()
     tes = _nf_text(raw["TES"])
     cr = _nf_text(raw["C.R."]).str.replace(r"\.0$", "", regex=True)
     quant = raw["QUANT"].map(_nf_number)
@@ -1890,7 +1909,7 @@ def processar_nf_bruto(raw):
         "Código": _nf_text(raw["CODIGO"]),
         "Produto": _nf_text(raw["PRODUTO"]),
         "QNT": quant.where(cr.eq("600307"), 0.0),
-        "Natureza": _nf_text(raw["NATUREZA"]),
+        "Natureza": _nf_text(raw["NATUREZA"]).str.upper(),
     })
 
     key_cols = ["Classificação", "Digitação", "Documento", "Fornecedor", "Código", "Produto", "Natureza"]
@@ -1902,7 +1921,9 @@ def processar_nf_bruto(raw):
     treated = treated[NF_OUTPUT_COLS]
 
     meta = {
+        "linhas_excel": linhas_excel,
         "linhas_brutas": int(len(base)),
+        "linhas_ignoradas_natureza": linhas_ignoradas_natureza,
         "linhas_tratadas": int(len(treated)),
         "linhas_consolidadas": int(len(base) - len(treated)),
         "lancadas_brutas": int((base["Classificação"] == "LANÇADA").sum()),
@@ -3340,7 +3361,8 @@ elif page == "NFs":
     st.markdown("#### Notas fiscais")
     st.caption(
         "Tratamento do relatório de Entradas: TES com 3 dígitos = LANÇADA; demais = PRÉ NOTA. "
-        "A QNT é considerada somente quando C.R. = 600307."
+        "A QNT é considerada somente quando C.R. = 600307. "
+        "São consideradas somente as naturezas operacionais definidas para o Gestão de Entregas."
     )
 
     nf_success = st.session_state.pop("_nf_success", None)
@@ -3364,10 +3386,7 @@ elif page == "NFs":
         m1.metric("Linhas tratadas", int(nf_meta.get("qtd_linhas_tratadas", 0) or 0))
         m2.metric("Lançadas", int(nf_meta.get("qtd_lancadas", 0) or 0))
         m3.metric("Pré notas", int(nf_meta.get("qtd_pre_notas", 0) or 0))
-        m4.metric(
-            "Linhas consolidadas",
-            max(int(nf_meta.get("qtd_linhas_brutas", 0) or 0) - int(nf_meta.get("qtd_linhas_tratadas", 0) or 0), 0),
-        )
+        m4.metric("Naturezas consideradas", len(NF_ALLOWED_NATURES))
 
         atualizado = nf_meta.get("atualizado_em")
         atualizado_txt = _fmt_feed_datetime(atualizado) if atualizado else ""
@@ -3867,7 +3886,8 @@ def _render_nf_feed():
     st.markdown("#### Importar relatório bruto de NFs")
     st.caption(
         "Modelo validado: aba '1-Entradas', cabeçalho na linha 2. "
-        "São utilizadas as colunas DIGITACAO, DOCUMENTO, NOME, C.R., NATUREZA, CODIGO, PRODUTO, QUANT e TES."
+        "São utilizadas as colunas DIGITACAO, DOCUMENTO, NOME, C.R., NATUREZA, CODIGO, PRODUTO, QUANT e TES. "
+        "Somente as 5 naturezas operacionais configuradas serão consideradas."
     )
     _render_last_feed_load("nf")
     uploaded_nf = st.file_uploader(
@@ -3887,10 +3907,16 @@ def _render_nf_feed():
             treated_nf, nf_import_meta = processar_nf_bruto(raw_nf)
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Linhas do Excel", nf_import_meta["linhas_brutas"])
+            c1.metric("Linhas elegíveis", nf_import_meta["linhas_brutas"])
             c2.metric("Linhas tratadas", nf_import_meta["linhas_tratadas"])
             c3.metric("Lançadas", nf_import_meta["lancadas"])
             c4.metric("Pré notas", nf_import_meta["pre_notas"])
+
+            if nf_import_meta.get("linhas_ignoradas_natureza", 0):
+                st.info(
+                    f"{nf_import_meta['linhas_ignoradas_natureza']} linha(s) foram ignoradas por pertencerem a outras naturezas. "
+                    f"Total original do arquivo: {nf_import_meta.get('linhas_excel', 0)} linha(s)."
+                )
 
             if nf_import_meta["linhas_consolidadas"]:
                 st.info(
@@ -4355,4 +4381,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 16")
+st.sidebar.caption("UI build 17")
