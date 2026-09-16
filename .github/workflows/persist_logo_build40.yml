@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/persist_logo_build40.yml'
+      - 'scripts/persist_logo_build40.py'
 
 permissions:
   contents: write
