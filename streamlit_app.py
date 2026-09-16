@@ -1362,7 +1362,6 @@ import json
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="GESTÃO DE ENTREGAS | SETTA",
@@ -2149,7 +2148,7 @@ def apply_operational_statuses(schedule, total_item_map):
             base_status = "Aguardando separação"
             group = "Aguardando separação"
 
-        if context_known and possui_entrega and not special:
+        if context_known and possui_entrega and not special and qty > 0:
             group = "Com pendências"
             if not priority:
                 base_status = "Pendências"
@@ -2411,7 +2410,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 62
+            <b>Build</b><br>APP core build 63
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2946,55 +2945,11 @@ elif page == "Cronograma":
             with st.expander("Prévia da mensagem para o Teams", expanded=False):
                 st.code(teams_message, language=None)
 
-            msg_js = json.dumps(teams_message, ensure_ascii=False)
-            url_js = json.dumps(teams_chat_url)
-            components.html(
-                f"""
-                <div style="font-family:Arial,sans-serif;">
-                  <button id="teams-occurrence-btn" style="
-                    width:100%;height:42px;border:0;border-radius:8px;
-                    background:#5b5fc7;color:white;font-weight:700;cursor:pointer;
-                    font-size:14px;
-                  ">Enviar ocorrências ao Teams</button>
-                  <div id="teams-occurrence-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>
-                </div>
-                <script>
-                  const occurrenceMessage = {msg_js};
-                  const teamsUrl = {url_js};
-
-                  async function copyOccurrenceMessage() {{
-                    try {{
-                      await navigator.clipboard.writeText(occurrenceMessage);
-                      return true;
-                    }} catch (err) {{
-                      try {{
-                        const textarea = document.createElement('textarea');
-                        textarea.value = occurrenceMessage;
-                        textarea.style.position = 'fixed';
-                        textarea.style.left = '-9999px';
-                        document.body.appendChild(textarea);
-                        textarea.focus();
-                        textarea.select();
-                        const ok = document.execCommand('copy');
-                        document.body.removeChild(textarea);
-                        return ok;
-                      }} catch (fallbackErr) {{
-                        return false;
-                      }}
-                    }}
-                  }}
-
-                  document.getElementById('teams-occurrence-btn').addEventListener('click', async () => {{
-                    const copied = await copyOccurrenceMessage();
-                    window.open(teamsUrl, '_blank', 'noopener,noreferrer');
-                    const status = document.getElementById('teams-occurrence-status');
-                    status.textContent = copied
-                      ? 'Mensagem com todas as OPs copiada. No Teams, cole e envie.'
-                      : 'Teams aberto. Copie a mensagem pela prévia acima e envie.';
-                  }});
-                </script>
-                """,
-                height=78,
+            st.caption("Copie a mensagem pela prévia acima e depois abra o chat no Teams.")
+            st.link_button(
+                "Abrir chat no Teams",
+                teams_chat_url,
+                use_container_width=True,
             )
 
             user_pcp = st.text_input(
@@ -3202,6 +3157,24 @@ elif page == "Materiais":
             ])
 
             with tab_pending:
+                pending_page_size = 250
+                pending_total = len(pendentes_view)
+                pending_pages = max(1, (pending_total + pending_page_size - 1) // pending_page_size)
+                pending_options = list(range(1, pending_pages + 1))
+                if st.session_state.get("materiais_pending_page") not in pending_options:
+                    st.session_state.pop("materiais_pending_page", None)
+                pending_page = st.selectbox(
+                    "Página de materiais pendentes",
+                    pending_options,
+                    index=0,
+                    key="materiais_pending_page",
+                    label_visibility="collapsed" if pending_pages == 1 else "visible",
+                )
+                pending_start = (int(pending_page) - 1) * pending_page_size
+                pending_end = min(pending_start + pending_page_size, pending_total)
+                pendentes_page_view = pendentes_view.iloc[pending_start:pending_end].copy()
+                if pending_total > pending_page_size:
+                    st.caption(f"Exibindo {pending_start + 1}–{pending_end} de {pending_total} materiais pendentes.")
                 st.caption(
                     "Selecione um ou mais materiais. Ao marcar como separado, eles saem desta lista "
                     "e passam para a aba Marcados como entregue."
@@ -3209,7 +3182,7 @@ elif page == "Materiais":
                 if pendentes_view.empty:
                     st.success("Não existem itens pendentes dentro dos filtros selecionados.")
                 else:
-                    editor = pendentes_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
+                    editor = pendentes_page_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
                     editor.insert(0, "Selecionar", False)
                     edited = st.data_editor(
                         editor,
@@ -3357,12 +3330,30 @@ elif page == "Materiais":
                         st.caption("Marque os itens desejados na primeira coluna para liberar as ações em lote.")
 
             with tab_done:
+                done_page_size = 250
+                done_total = len(entregues_view)
+                done_pages = max(1, (done_total + done_page_size - 1) // done_page_size)
+                done_options = list(range(1, done_pages + 1))
+                if st.session_state.get("materiais_done_page") not in done_options:
+                    st.session_state.pop("materiais_done_page", None)
+                done_page = st.selectbox(
+                    "Página de materiais separados",
+                    done_options,
+                    index=0,
+                    key="materiais_done_page",
+                    label_visibility="collapsed" if done_pages == 1 else "visible",
+                )
+                done_start = (int(done_page) - 1) * done_page_size
+                done_end = min(done_start + done_page_size, done_total)
+                entregues_page_view = entregues_view.iloc[done_start:done_end].copy()
+                if done_total > done_page_size:
+                    st.caption(f"Exibindo {done_start + 1}–{done_end} de {done_total} materiais separados.")
                 st.caption("Itens já marcados como separados pela equipe.")
                 if entregues_view.empty:
                     st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
                 else:
                     st.dataframe(
-                        entregues_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
+                        entregues_page_view.drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -3457,7 +3448,7 @@ elif page == "NFs":
             rows_nf = _supabase_api(
                 "load_nfs",
                 {
-                    "limit": 50000,
+                    "limit": 1500,
                     "classificacao": None if nf_class_filter == "Todos" else nf_class_filter,
                     "data": nf_date_filter.isoformat() if nf_date_filter is not None else None,
                     "natureza": None if nf_nature_filter == "Todos" else nf_nature_filter,
@@ -3474,7 +3465,11 @@ elif page == "NFs":
             st.error(f"Não foi possível carregar a base tratada de NFs: {exc}")
 
         nf_view = _nf_rows_to_frame(rows_nf)
-        st.caption(f"{total_nf} registro(s) encontrado(s).")
+        shown_nf = len(nf_view)
+        if total_nf > shown_nf:
+            st.caption(f"{total_nf} registro(s) encontrado(s). Exibindo os primeiros {shown_nf}; use os filtros para refinar a consulta.")
+        else:
+            st.caption(f"{total_nf} registro(s) encontrado(s).")
         if nf_view.empty:
             st.info("Nenhum registro encontrado para os filtros selecionados.")
         else:
@@ -4400,4 +4395,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 20")
+st.sidebar.caption("UI build 21")
