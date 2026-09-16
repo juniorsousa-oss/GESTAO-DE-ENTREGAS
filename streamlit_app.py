@@ -3,7 +3,6 @@ from html import escape
 from datetime import date
 import os
 import re
-import hashlib
 import hmac
 
 import pandas as pd
@@ -1447,13 +1446,9 @@ def _logo_admin_password_valid(candidate):
     except Exception:
         configured = ""
     configured = configured or str(os.getenv("LOGO_ADMIN_PASSWORD") or "").strip()
-    if configured:
-        return hmac.compare_digest(candidate, configured)
-
-    # Fallback temporário: somente o hash fica no repositório público.
-    fallback_hash = "af838a69f0cefeafe21eb9e8a85e024bf32ef8b582d2f65f0e455142e59e0436"
-    candidate_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(candidate_hash, fallback_hash)
+    if not configured:
+        return False
+    return hmac.compare_digest(candidate, configured)
 
 if st.session_state.pop("_clear_logo_admin_password", False):
     st.session_state.pop("_logo_admin_password_input", None)
@@ -1580,7 +1575,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 43
+            <b>Build</b><br>APP core build 44
         </div>''',
         unsafe_allow_html=True,
     )
