@@ -1,0 +1,36 @@
+name: Sidebar text only build 49
+
+on:
+  push:
+    paths:
+      - '.github/workflows/sidebar_text_only_build49.yml'
+      - 'scripts/sidebar_text_only_build49.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply build 49 patch
+        run: |
+          python scripts/sidebar_text_only_build49.py
+          python -m py_compile streamlit_app.py
+          grep -n 'APP core build 49' streamlit_app.py
+          grep -n 'format_func=lambda item: str(item).upper()' streamlit_app.py
+          grep -n 'Build 49 — navegação somente texto' streamlit_app.py
+      - name: Commit update
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Use text-only uppercase sidebar navigation"
+          git push
