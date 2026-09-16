@@ -1021,6 +1021,43 @@ def _markdown_ui(body, *args, **kwargs):
           }
 
         '''
+        extra_css += '''
+
+          /* Build 49 — navegação somente texto */
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
+              justify-content: center !important;
+              padding: .78rem 1rem !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before,
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {
+              content: none !important;
+              display: none !important;
+              width: 0 !important;
+              height: 0 !important;
+              background: none !important;
+              -webkit-mask-image: none !important;
+              mask-image: none !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
+              width: 100% !important;
+              text-align: center !important;
+              text-transform: uppercase !important;
+              letter-spacing: .045em !important;
+              font-size: .84rem !important;
+              font-weight: 800 !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
+              padding: .78rem 1rem !important;
+              border-left: 6px solid #ff454d !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
+              color: #ffffff !important;
+          }
+'''
         body = body.replace('</style>', extra_css + '\n</style>')
 
     return _original_markdown(body, *args, **kwargs)
@@ -2004,6 +2041,7 @@ with st.sidebar:
         ["Dashboard", "Cronograma", "Materiais", "NFs", "Histórico"],
         label_visibility="collapsed",
         key="main_navigation",
+        format_func=lambda item: str(item).upper(),
     )
 
     st.divider()
@@ -2112,7 +2150,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 48
+            <b>Build</b><br>APP core build 49
         </div>''',
         unsafe_allow_html=True,
     )
