@@ -1,0 +1,42 @@
+name: Build 67 - material pending schedule rule
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build67_material_pending_schedule.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply Build 67
+        run: python scripts/build67_material_pending_schedule.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Validate material rule
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t = Path('streamlit_app.py').read_text(encoding='utf-8')
+          assert 'def _recalcular_condicao_pendencia_materiais' in t
+          assert 'possui_data_cronograma & possui_separacao & atendimento_estoque' in t
+          assert 'APP core build 67' in t
+          print('Build 67 validation OK')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 67: require scheduled OP for material pendency"
+          git push
