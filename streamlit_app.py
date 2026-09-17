@@ -3634,7 +3634,7 @@ elif page == "Materiais":
                         st.session_state.get("materiais_data_campo", "Última Solicitação"),
                         st.session_state.get("materiais_data_filtro"),
                         str(st.session_state.get("materiais_busca_filtro", "") or ""),
-                        limit=5000,
+                        limit=10000,
                         use_session_cache=False,
                     )
                     export_parts = []
