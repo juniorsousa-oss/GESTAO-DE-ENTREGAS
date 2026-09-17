@@ -1,0 +1,55 @@
+name: Build 72 - session operator
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build72_session_operator.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Build 72
+        run: python scripts/build72_session_operator.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Validate session operator
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('streamlit_app.py').read_text(encoding='utf-8')
+          checks = [
+              'OPERATOR_REQUIRED_ACTIONS',
+              'def _session_operator():',
+              'def _session_operator_input(label, key):',
+              'Informe o operador responsável antes de executar esta ação.',
+              'Operador da sessão:',
+              'Trocar operador',
+              'APP core build 72',
+              'UI build 30',
+          ]
+          missing = [x for x in checks if x not in text]
+          assert not missing, missing
+          assert 'value="Operador"' not in text, 'Old default operator field still present'
+          print('Build 72 validation OK')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 72: persist operator for current session"
+          git push
