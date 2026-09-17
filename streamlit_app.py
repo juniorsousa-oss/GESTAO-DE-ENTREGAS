@@ -2448,7 +2448,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 69
+            <b>Build</b><br>APP core build 70
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3183,18 +3183,20 @@ elif page == "Materiais":
             view = view.sort_values(["_priority_sort", "Projeto", "Produto"], ascending=[False, True, True]).drop(columns=["_priority_sort"])
             view = view.drop(columns=["_projeto_key", "_produto_key"], errors="ignore")
 
-            pendentes_view = view[view["Status separação"] != "Separado"].reset_index(drop=True)
-            entregues_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
+            pendentes_view = view[~view["Status separação"].isin(["Separado", "Com problema"])].reset_index(drop=True)
+            separados_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
+            problemas_view = view[view["Status separação"] == "Com problema"].reset_index(drop=True)
 
-            tab_pending, tab_done = st.tabs([
+            tab_pending, tab_done, tab_problem = st.tabs([
                 f"Pendentes de separação ({len(pendentes_view)})",
-                f"Marcados como entregue ({len(entregues_view)})",
+                f"Separados ({len(separados_view)})",
+                f"Materiais com problema ({len(problemas_view)})",
             ])
 
             with tab_pending:
                 st.caption(
-                    "Selecione um ou mais materiais. Ao marcar como separado, eles saem desta lista "
-                    "e passam para a aba Marcados como entregue."
+                    "Selecione um ou mais materiais. Ao marcar como separado, eles passam para a aba Separados. "
+                    "Ao relatar problema, o comentário é obrigatório e o item passa para Materiais com problema."
                 )
                 if pendentes_view.empty:
                     st.success("Não existem itens pendentes dentro dos filtros selecionados.")
@@ -3227,8 +3229,8 @@ elif page == "Materiais":
                             key="material_bulk_responsavel",
                         )
                         comentario_material = st.text_area(
-                            "Comentário para os itens selecionados (opcional ao separar)",
-                            placeholder="Ex.: material separado e identificado no carrinho do projeto.",
+                            "Comentário para os itens selecionados",
+                            placeholder="Obrigatório ao relatar problema. Nas demais ações, o comentário é opcional.",
                             key="material_bulk_comentario",
                             height=90,
                         )
@@ -3241,7 +3243,8 @@ elif page == "Materiais":
                             for _, r in selected.iterrows()
                         ]
 
-                        b1, b2, b3, b4 = st.columns(4)
+                        b1, b2, b3 = st.columns(3)
+                        b4, b5 = st.columns(2)
                         if b1.button(
                             "Solicitar prioridade",
                             type="primary",
@@ -3319,6 +3322,34 @@ elif page == "Materiais":
                                 st.error(f"Não foi possível marcar os itens como separados: {exc}")
 
                         if b4.button(
+                            "Relatar problema",
+                            use_container_width=True,
+                            key="material_bulk_problem",
+                        ):
+                            if not comentario_material.strip():
+                                st.warning("Informe o problema no campo de comentário antes de continuar.")
+                            else:
+                                try:
+                                    result = _supabase_api(
+                                        "material_action_bulk",
+                                        {
+                                            "itens": itens_payload,
+                                            "status": "Com problema",
+                                            "comentario": comentario_material.strip(),
+                                            "responsavel": responsavel_material or "Operador",
+                                        },
+                                        timeout=45,
+                                    )
+                                    _sync_material_ops(force=True)
+                                    st.session_state["_material_action_success"] = (
+                                        f"Problema registrado em {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                    )
+                                    st.session_state.pop("materiais_pendentes_editor", None)
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível registrar o problema: {exc}")
+
+                        if b5.button(
                             "Salvar comentário",
                             use_container_width=True,
                             key="material_bulk_comment",
@@ -3350,11 +3381,24 @@ elif page == "Materiais":
 
             with tab_done:
                 st.caption("Itens já marcados como separados pela equipe.")
-                if entregues_view.empty:
+                if separados_view.empty:
                     st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
                 else:
                     st.dataframe(
-                        entregues_view.head(500).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
+                        separados_view.head(500).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+            with tab_problem:
+                st.caption("Materiais reportados com problema pela equipe. O comentário registra o motivo informado pelo operador.")
+                if problemas_view.empty:
+                    st.info("Nenhum material com problema registrado dentro dos filtros selecionados.")
+                else:
+                    if len(problemas_view) > 500:
+                        st.caption(f"Exibindo os primeiros 500 de {len(problemas_view)} itens com problema.")
+                    st.dataframe(
+                        problemas_view.head(500).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
                         use_container_width=True,
                         hide_index=True,
                     )
@@ -4392,4 +4436,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 27")
+st.sidebar.caption("UI build 28")
