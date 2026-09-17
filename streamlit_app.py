@@ -21,6 +21,20 @@ OPERATOR_REQUIRED_ACTIONS = {
     "material_action_bulk",
 }
 
+CACHE_INVALIDATING_ACTIONS = {
+    "save_logo",
+    "save_nfs",
+    "create_operator",
+    "delete_operator",
+    "historical_load",
+    "current_load",
+    "update_status_bulk",
+    "team_action",
+    "close_pcp_bulk",
+    "material_action_bulk",
+    "save_materials",
+}
+
 
 def _session_operator():
     return str(st.session_state.get("_operador_sessao", "") or "").strip()
@@ -30,7 +44,7 @@ def _load_operator_options(force=False):
     if st.session_state.get("_operadores_sync") and not force:
         return st.session_state.get("_operadores_cadastrados", [])
     try:
-        result = _supabase_api("list_operators", timeout=20)
+        result = _cached_supabase_read("list_operators", timeout=20, force=force)
         rows = result.get("data") or []
         if isinstance(rows, dict):
             rows = [rows]
@@ -190,6 +204,8 @@ def _supabase_api(action, payload=None, timeout=45):
             data = {"error": response.text}
         if not response.ok:
             raise RuntimeError(data.get("message") or data.get("error") or f"Erro HTTP {response.status_code}")
+        if action in CACHE_INVALIDATING_ACTIONS and "_clear_shared_read_cache" in globals():
+            _clear_shared_read_cache()
         return {"data": data or []}
 
     response = requests.post(
@@ -205,7 +221,29 @@ def _supabase_api(action, payload=None, timeout=45):
 
     if not response.ok:
         raise RuntimeError(data.get("error") or f"Erro HTTP {response.status_code}")
+    if action in CACHE_INVALIDATING_ACTIONS and "_clear_shared_read_cache" in globals():
+        _clear_shared_read_cache()
     return data
+
+
+@st.cache_data(ttl=20, show_spinner=False, max_entries=128)
+def _shared_cached_read(action, payload_json="{}", timeout=45):
+    payload = json.loads(payload_json) if payload_json else {}
+    return _supabase_api(action, payload or None, timeout=timeout)
+
+
+def _cached_supabase_read(action, payload=None, timeout=45, force=False):
+    payload_json = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True, default=str)
+    if force:
+        _shared_cached_read.clear()
+    return _shared_cached_read(action, payload_json, timeout)
+
+
+def _clear_shared_read_cache():
+    try:
+        _shared_cached_read.clear()
+    except Exception:
+        pass
 
 
 
@@ -220,7 +258,7 @@ def _sync_bootstrap_from_supabase(force=False):
         return True
 
     try:
-        result = _supabase_api("bootstrap", timeout=20)
+        result = _cached_supabase_read("bootstrap", timeout=20, force=force)
         payload = result.get("data") or {}
         if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
             payload = payload[0]
@@ -306,7 +344,7 @@ def _sync_current_from_supabase(force=False):
         return True
 
     try:
-        result = _supabase_api("list_current", timeout=30)
+        result = _cached_supabase_read("list_current", timeout=30, force=force)
         rows = result.get("data") or []
         if not rows:
             st.session_state["_entrega_supabase_current_full"] = pd.DataFrame()
@@ -370,7 +408,7 @@ def _sync_material_summary_from_supabase(force=False):
         return True
 
     try:
-        result = _supabase_api("load_material_summary", timeout=20)
+        result = _cached_supabase_read("load_material_summary", timeout=20, force=force)
         rows = result.get("data") or []
         summary = pd.DataFrame(rows)
         expected = ["projeto", "qtd_itens_pendentes", "pendencias_com_saldo", "atualizado_em", "qtd_itens_mrp", "status_projeto", "situacao_entrega", "possui_entrega", "contexto_raw", "contexto_parte1", "contexto_parte2"]
@@ -405,7 +443,7 @@ def _sync_materials_from_supabase(force=False):
         return True
 
     try:
-        result = _supabase_api("load_materials", timeout=45)
+        result = _cached_supabase_read("load_materials", timeout=45, force=force)
         payload = result.get("data") or {}
         rows = payload.get("dados") or [] if isinstance(payload, dict) else []
         if rows:
@@ -2533,7 +2571,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 77
+            <b>Build</b><br>APP core build 78
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3234,19 +3272,7 @@ elif page == "Materiais":
             return []
 
     def _consultar_materiais(ops_pendencia, condicao, projeto, prioridade):
-        cache_key = json.dumps({
-            "ops": ops_pendencia,
-            "condicao": condicao,
-            "projeto": projeto,
-            "prioridade": prioridade,
-        }, ensure_ascii=False, sort_keys=True)
-        cached = st.session_state.get("_materiais_view_cache")
-        if isinstance(cached, dict) and cached.get("key") == cache_key:
-            payload = cached.get("data")
-            if isinstance(payload, dict):
-                return payload
-
-        result = _supabase_api(
+        result = _cached_supabase_read(
             "load_material_view",
             {
                 "ops_pendencia": ops_pendencia,
@@ -3261,7 +3287,6 @@ elif page == "Materiais":
             result = result[0]
         if not isinstance(result, dict):
             result = {}
-        st.session_state["_materiais_view_cache"] = {"key": cache_key, "data": result}
         return result
 
     def _material_frame(rows):
@@ -3594,7 +3619,7 @@ elif page == "NFs":
     nf_meta = st.session_state.get("_nf_meta_cache") or {}
     if not nf_meta:
         try:
-            meta_rows = _supabase_api("load_nf_summary", timeout=20).get("data") or []
+            meta_rows = _cached_supabase_read("load_nf_summary", timeout=20).get("data") or []
             if isinstance(meta_rows, list) and meta_rows:
                 nf_meta = meta_rows[0]
             elif isinstance(meta_rows, dict):
@@ -3623,7 +3648,7 @@ elif page == "NFs":
         nf_filter_meta = st.session_state.get("_nf_filter_meta_cache") or {}
         if not nf_filter_meta:
             try:
-                nf_filter_meta = _supabase_api("load_nf_filters", timeout=20).get("data") or {}
+                nf_filter_meta = _cached_supabase_read("load_nf_filters", timeout=20).get("data") or {}
                 if isinstance(nf_filter_meta, list) and len(nf_filter_meta) == 1 and isinstance(nf_filter_meta[0], dict):
                     nf_filter_meta = nf_filter_meta[0]
                 if not isinstance(nf_filter_meta, dict):
@@ -3665,7 +3690,7 @@ elif page == "NFs":
         rows_nf = []
         total_nf = 0
         try:
-            rows_nf = _supabase_api(
+            rows_nf = _cached_supabase_read(
                 "load_nfs",
                 {
                     "limit": 500,
@@ -3744,7 +3769,7 @@ elif page == "Histórico":
             st.warning("Conexão com o Supabase indisponível para consultar o registro diário de alertas.")
         else:
             try:
-                daily_rows = _supabase_api("list_daily_alerts", timeout=30).get("data") or []
+                daily_rows = _cached_supabase_read("list_daily_alerts", timeout=30).get("data") or []
                 daily_alerts = pd.DataFrame(daily_rows)
             except Exception as exc:
                 st.warning(f"Não foi possível carregar os alertas críticos diários: {exc}")
