@@ -1643,8 +1643,18 @@ def default_state():
     }
 
 
+@st.cache_data(ttl=300, show_spinner=False, max_entries=8)
+def _read_excel_bytes_cached(file_bytes, sheet_name, header=0, dtype_text=False):
+    return pd.read_excel(
+        BytesIO(file_bytes),
+        sheet_name=sheet_name,
+        header=header,
+        dtype=str if dtype_text else None,
+    )
+
+
 def read_macro_schedule(uploaded_file):
-    raw = pd.read_excel(uploaded_file, sheet_name="Datas esperadas")
+    raw = _read_excel_bytes_cached(uploaded_file.getvalue(), "Datas esperadas")
     if raw.shape[1] < 22:
         raise ValueError("A aba 'Datas esperadas' não possui a coluna V esperada para Separação.")
 
@@ -2572,7 +2582,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 78
+            <b>Build</b><br>APP core build 79
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4079,7 +4089,7 @@ def _render_mrp_feed():
     uploaded_mrp = st.file_uploader("Selecione a planilha MRP Consulta", type=["xlsx", "xls"])
     if uploaded_mrp is not None:
         try:
-            raw = pd.read_excel(uploaded_mrp, sheet_name="Demanda_Projeto")
+            raw = _read_excel_bytes_cached(uploaded_mrp.getvalue(), "Demanda_Projeto")
             missing = [c for c in MATERIAL_COLS if c not in raw.columns]
             if missing:
                 st.error(
@@ -4153,11 +4163,11 @@ def _render_nf_feed():
 
     if uploaded_nf is not None:
         try:
-            raw_nf = pd.read_excel(
-                uploaded_nf,
-                sheet_name="1-Entradas",
+            raw_nf = _read_excel_bytes_cached(
+                uploaded_nf.getvalue(),
+                "1-Entradas",
                 header=1,
-                dtype=str,
+                dtype_text=True,
             )
             treated_nf, nf_import_meta = processar_nf_bruto(raw_nf)
 
