@@ -8,6 +8,7 @@ import hmac
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit.delta_generator import DeltaGenerator
 
 SUPABASE_EDGE_URL = "https://cuixazpxkvniqldmmnth.supabase.co/functions/v1/entrega-cronograma-api"
@@ -2532,7 +2533,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 75
+            <b>Build</b><br>APP core build 76
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3065,8 +3066,70 @@ elif page == "Cronograma":
             with st.expander("Prévia da mensagem para o Teams", expanded=False):
                 st.code(teams_message, language=None)
 
-            st.caption("Copie a mensagem pela prévia acima e abra o chat do Teams pelo link abaixo.")
-            st.markdown(f"[Abrir chat no Teams]({teams_chat_url})")
+            msg_js = json.dumps(teams_message, ensure_ascii=False)
+            url_js = json.dumps(teams_chat_url)
+            components.html(
+                f"""
+                <div style="font-family:Arial,sans-serif;">
+                  <button id="teams-open-btn" style="
+                    width:100%;height:42px;border:0;border-radius:8px;
+                    background:#5b5fc7;color:white;font-weight:700;cursor:pointer;
+                    font-size:14px;
+                  ">Abrir chat no Teams</button>
+                  <div id="teams-copy-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>
+                </div>
+                <script>
+                  const teamsMessage = {msg_js};
+                  const teamsUrl = {url_js};
+                  const statusEl = document.getElementById('teams-copy-status');
+
+                  function copySynchronously(text) {{
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.setAttribute('readonly', '');
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    textarea.style.left = '-9999px';
+                    textarea.style.top = '0';
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    textarea.setSelectionRange(0, textarea.value.length);
+                    let copied = false;
+                    try {{
+                      copied = document.execCommand('copy');
+                    }} catch (err) {{
+                      copied = false;
+                    }}
+                    document.body.removeChild(textarea);
+                    return copied;
+                  }}
+
+                  document.getElementById('teams-open-btn').addEventListener('click', () => {{
+                    const copiedNow = copySynchronously(teamsMessage);
+                    window.open(teamsUrl, '_blank', 'noopener,noreferrer');
+
+                    if (copiedNow) {{
+                      statusEl.textContent = 'Mensagem copiada automaticamente. No Teams, basta colar e enviar.';
+                      return;
+                    }}
+
+                    if (navigator.clipboard && window.isSecureContext) {{
+                      navigator.clipboard.writeText(teamsMessage)
+                        .then(() => {{
+                          statusEl.textContent = 'Mensagem copiada automaticamente. No Teams, basta colar e enviar.';
+                        }})
+                        .catch(() => {{
+                          statusEl.textContent = 'O navegador bloqueou a cópia automática. Use o ícone de copiar na prévia acima.';
+                        }});
+                    }} else {{
+                      statusEl.textContent = 'O navegador bloqueou a cópia automática. Use o ícone de copiar na prévia acima.';
+                    }}
+                  }});
+                </script>
+                """,
+                height=76,
+            )
 
             user_pcp = _session_operator_input(
                 "Operador responsável",
