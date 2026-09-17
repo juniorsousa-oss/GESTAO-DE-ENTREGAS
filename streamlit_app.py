@@ -330,16 +330,7 @@ def _sync_materials_from_supabase(force=False):
                 materials_df = materials_df.rename(columns={legacy_situation_col: "Situação Separação"})
             if "Situação Separação" in materials_df.columns:
                 materials_df["Situação Separação"] = materials_df["Situação Separação"].map(_normalize_delivery_state)
-            if {"Projeto", "Situação Separação", "Ação"}.issubset(materials_df.columns):
-                projeto_key = materials_df["Projeto"].map(normalize_op)
-                possui_separacao = (
-                    materials_df["Situação Separação"].eq("POSSUI SEPARAÇÃO")
-                    .groupby(projeto_key)
-                    .transform("any")
-                    .fillna(False)
-                )
-                atendimento_estoque = materials_df["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
-                materials_df["Condição de pendência"] = (possui_separacao & atendimento_estoque).map({True: "SIM", False: "NÃO"})
+            materials_df = _recalcular_condicao_pendencia_materiais(materials_df)
             material_order = [
                 "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
                 "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
@@ -1834,6 +1825,46 @@ def _split_mrp_context(value):
     return raw, parts[0], parts[1], _normalize_project_status(parts[2]), _normalize_delivery_state(parts[3])
 
 
+
+def _recalcular_condicao_pendencia_materiais(df):
+    if not isinstance(df, pd.DataFrame):
+        return df
+    base = df.copy()
+    required = {"Projeto", "Situação Separação", "Ação"}
+    if base.empty or not required.issubset(base.columns):
+        if "Condição de pendência" not in base.columns:
+            base["Condição de pendência"] = "NÃO"
+        return base
+
+    projeto_key = base["Projeto"].map(normalize_op)
+    possui_separacao = (
+        base["Situação Separação"].map(_normalize_delivery_state).eq("POSSUI SEPARAÇÃO")
+        .groupby(projeto_key)
+        .transform("any")
+        .fillna(False)
+    )
+    atendimento_estoque = (
+        base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
+    )
+
+    # Only OPs effectively present in the active schedule with a valid separation date
+    # are eligible to generate material pendencies.
+    schedule = st.session_state.get("schedule", pd.DataFrame())
+    ops_programadas = set()
+    if isinstance(schedule, pd.DataFrame) and not schedule.empty and {"op", "data_separacao"}.issubset(schedule.columns):
+        datas = pd.to_datetime(schedule["data_separacao"], errors="coerce")
+        ops_programadas = {
+            normalize_op(op)
+            for op in schedule.loc[datas.notna(), "op"].tolist()
+            if normalize_op(op)
+        }
+
+    possui_data_cronograma = projeto_key.isin(ops_programadas)
+    base["Condição de pendência"] = (
+        possui_data_cronograma & possui_separacao & atendimento_estoque
+    ).map({True: "SIM", False: "NÃO"})
+    return base
+
 def import_materials(raw):
     missing = [c for c in MATERIAL_COLS if c not in raw.columns]
     if missing:
@@ -1855,15 +1886,7 @@ def import_materials(raw):
     base["Status Projeto"] = parsed.map(lambda x: x[3])
     base["Situação Separação"] = parsed.map(lambda x: x[4])
 
-    atendimento_estoque = base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
-    projeto_key = base["Projeto"].map(normalize_op)
-    possui_separacao = (
-        base["Situação Separação"].eq("POSSUI SEPARAÇÃO")
-        .groupby(projeto_key)
-        .transform("any")
-        .fillna(False)
-    )
-    base["Condição de pendência"] = (possui_separacao & atendimento_estoque).map({True: "SIM", False: "NÃO"})
+    base = _recalcular_condicao_pendencia_materiais(base)
 
     st.session_state.materials = base
     return base
@@ -2412,7 +2435,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 66
+            <b>Build</b><br>APP core build 67
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3024,7 +3047,8 @@ elif page == "Materiais":
     _sync_material_ops()
 
     with tab_list:
-        materials = st.session_state.materials.copy()
+        materials = _recalcular_condicao_pendencia_materiais(st.session_state.materials.copy())
+        st.session_state.materials = materials.copy()
         material_view_cols = MATERIAL_COLS + MRP_CONTEXT_COLS
         ordered_cols = [c for c in material_view_cols if c in materials.columns]
         extra_cols = [c for c in materials.columns if c not in ordered_cols]
@@ -4355,4 +4379,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 24")
+st.sidebar.caption("UI build 25")
