@@ -1,0 +1,41 @@
+name: Build 85 cronograma export and clear label
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build85_cronograma_export_and_clear_label.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Build 85 patch
+        run: python scripts/build85_cronograma_export_and_clear_label.py
+      - name: Validate syntax
+        run: python -m py_compile streamlit_app.py
+      - name: Validate markers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t = Path('streamlit_app.py').read_text(encoding='utf-8')
+          assert 'APP_BUILD = 85' in t
+          assert 'APP core build 85' in t
+          assert '"Limpar",\n' in t
+          assert t.count('Preparar Excel do Cronograma') == 1
+          pos_export = t.index('Preparar Excel do Cronograma')
+          pos_editor = t.index('cronograma_selecao_editor_core')
+          pos_pcp = t.index('with tab_pcp:')
+          assert pos_editor < pos_export < pos_pcp
+          print('Build 85 validation OK')
+          PY
+      - name: Commit Build 85
+        run: |
+          git config user.name 'juniorsousa-oss'
+          git config user.email 'juniorsousa@unipam.edu.br'
+          git add streamlit_app.py
+          git commit -m 'Build 85: move Cronograma export and rename clear filters' || exit 0
+          git push
