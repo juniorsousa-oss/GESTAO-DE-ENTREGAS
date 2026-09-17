@@ -1,13 +1,14 @@
 from pathlib import Path
-import re
 
 path = Path("streamlit_app.py")
 text = path.read_text(encoding="utf-8")
 
-pattern = re.compile(
-    r"def _recalcular_condicao_pendencia_materiais\(df\):\n.*?\n    return base\n(?=def import_materials\(raw\):)",
-    re.S,
-)
+start_marker = "def _recalcular_condicao_pendencia_materiais(df):"
+end_marker = "def import_materials(raw):"
+start = text.find(start_marker)
+end = text.find(end_marker, start)
+if start == -1 or end == -1 or end <= start:
+    raise SystemExit("Could not locate material pending helper boundaries")
 
 replacement = '''def _recalcular_condicao_pendencia_materiais(df):
     """Recalcula a condição dos materiais a partir da classificação final do Dashboard.
@@ -58,19 +59,18 @@ replacement = '''def _recalcular_condicao_pendencia_materiais(df):
         projeto_em_pendencia & atendimento_estoque
     ).map({True: "SIM", False: "NÃO"})
     return base
+
+
 '''
 
-text, count = pattern.subn(replacement, text, count=1)
-if count != 1:
-    raise SystemExit(f"Could not replace material pending helper; count={count}")
-
+text = text[:start] + replacement + text[end:]
 text = text.replace('APP core build 67', 'APP core build 68')
 text = text.replace('st.sidebar.caption("UI build 25")', 'st.sidebar.caption("UI build 26")')
 
 # Static guards: the old prerequisites must be absent from the helper and
 # the new dashboard group must be the source of truth.
-start = text.index("def _recalcular_condicao_pendencia_materiais(df):")
-end = text.index("def import_materials(raw):", start)
+start = text.index(start_marker)
+end = text.index(end_marker, start)
 helper = text[start:end]
 if 'grupo_operacional' not in helper or 'Com pendências' not in helper:
     raise SystemExit("Dashboard pending group not found in new helper")
