@@ -427,7 +427,7 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
-APP_BUILD = 84
+APP_BUILD = 85
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -2774,7 +2774,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 84
+            <b>Build</b><br>APP core build 85
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2956,7 +2956,7 @@ if page == "Dashboard":
                 "Pesquisar", type="primary", use_container_width=True
             )
             clear_col.form_submit_button(
-                "×",
+                "Limpar",
                 key="filter_clear_group__dashboard",
                 help="Limpar todos os filtros desta aba",
                 use_container_width=True,
@@ -3178,7 +3178,7 @@ elif page == "Cronograma":
                     "Pesquisar", type="primary", use_container_width=True
                 )
                 clear_col.form_submit_button(
-                    "×",
+                    "Limpar",
                     key="filter_clear_group__cronograma",
                     help="Limpar todos os filtros desta aba",
                     use_container_width=True,
@@ -3201,25 +3201,6 @@ elif page == "Cronograma":
             cronograma_export_view = view.copy()
             total_cronograma_filtrado = len(view)
             view = view.head(80).reset_index(drop=True)
-
-            cronograma_export_cols = [c for c in [
-                "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo",
-                "data_separacao", "status", "responsavel_separacao", "ultimo_comentario",
-                "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "sinalizacao", "motivo_alerta", "tratativa_pcp"
-            ] if c in cronograma_export_view.columns]
-            if st.button("Preparar Excel do Cronograma", key="cronograma_prepare_export"):
-                st.session_state["_cronograma_export_bytes"] = _excel_bytes(
-                    cronograma_export_view[cronograma_export_cols], "Cronograma"
-                )
-            if st.session_state.get("_cronograma_export_bytes"):
-                st.download_button(
-                    "Baixar Cronograma filtrado em Excel",
-                    data=st.session_state["_cronograma_export_bytes"],
-                    file_name=f"cronograma_{today().strftime('%d%m%Y')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="cronograma_download_export",
-                )
 
             st.caption("Marque uma ou mais OPs na coluna Selecionar. Uma OP abre as ações individuais; duas ou mais habilitam a ação em lote.")
             if total_cronograma_filtrado > 80:
@@ -3480,6 +3461,27 @@ elif page == "Cronograma":
                     if not project_comments.empty:
                         st.markdown("##### Comentários da OP")
                         st.dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
+
+        if not schedule.empty:
+            st.divider()
+            cronograma_export_cols = [c for c in [
+                "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo",
+                "data_separacao", "status", "responsavel_separacao", "ultimo_comentario",
+                "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "sinalizacao", "motivo_alerta", "tratativa_pcp"
+            ] if c in cronograma_export_view.columns]
+            if st.button("Preparar Excel do Cronograma", key="cronograma_prepare_export"):
+                st.session_state["_cronograma_export_bytes"] = _excel_bytes(
+                    cronograma_export_view[cronograma_export_cols], "Cronograma"
+                )
+            if st.session_state.get("_cronograma_export_bytes"):
+                st.download_button(
+                    "Baixar Cronograma filtrado em Excel",
+                    data=st.session_state["_cronograma_export_bytes"],
+                    file_name=f"cronograma_{today().strftime('%d%m%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="cronograma_download_export",
+                )
 
     with tab_pcp:
         pcp_success = st.session_state.pop("_pcp_bulk_success", None)
@@ -3820,7 +3822,7 @@ elif page == "Materiais":
                 "Pesquisar", type="primary", use_container_width=True
             )
             clear_col.form_submit_button(
-                "×",
+                "Limpar",
                 key="filter_clear_group__materiais",
                 help="Limpar todos os filtros desta aba",
                 use_container_width=True,
@@ -4206,7 +4208,7 @@ elif page == "NFs":
                 "Pesquisar", type="primary", use_container_width=True
             )
             clear_col.form_submit_button(
-                "×",
+                "Limpar",
                 key="filter_clear_group__nfs",
                 help="Limpar todos os filtros desta aba",
                 use_container_width=True,
@@ -4320,7 +4322,7 @@ elif page == "Histórico":
                 "Pesquisar", type="primary", use_container_width=True
             )
             clear_col.form_submit_button(
-                "×",
+                "Limpar",
                 key="filter_clear_group__historico_alertas",
                 help="Limpar todos os filtros desta aba",
                 use_container_width=True,
@@ -4449,7 +4451,7 @@ elif page == "Histórico":
                 search_col, clear_col = st.columns([14, 1])
                 search_col.form_submit_button("Pesquisar", type="primary", use_container_width=True)
                 clear_col.form_submit_button(
-                    "×",
+                    "Limpar",
                     key="filter_clear_group__history_session",
                     help="Limpar todos os filtros desta aba",
                     use_container_width=True,
@@ -5264,7 +5266,7 @@ if globals().get("page") == "Histórico":
                 "Pesquisar", type="primary", use_container_width=True
             )
             clear_col.form_submit_button(
-                "×",
+                "Limpar",
                 key="filter_clear_group__material_history",
                 help="Limpar todos os filtros desta aba",
                 use_container_width=True,
