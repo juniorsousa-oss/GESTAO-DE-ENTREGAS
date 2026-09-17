@@ -2448,7 +2448,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 70
+            <b>Build</b><br>APP core build 71
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3187,6 +3187,12 @@ elif page == "Materiais":
             separados_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
             problemas_view = view[view["Status separação"] == "Com problema"].reset_index(drop=True)
 
+            mat_m1, mat_m2, mat_m3, mat_m4 = st.columns(4)
+            mat_m1.metric("Total de linhas", len(view))
+            mat_m2.metric("Pendências", len(pendentes_view))
+            mat_m3.metric("Separados", len(separados_view))
+            mat_m4.metric("Com problema", len(problemas_view))
+
             tab_pending, tab_done, tab_problem = st.tabs([
                 f"Pendentes de separação ({len(pendentes_view)})",
                 f"Separados ({len(separados_view)})",
@@ -3554,7 +3560,9 @@ elif page == "NFs":
             )
 
 elif page == "Histórico":
-    history_tab_general, history_tab_archive, history_tab_feed = st.tabs(["Histórico geral", "Carga histórica", "Alimentação"])
+    history_tab_general, history_tab_materials, history_tab_archive, history_tab_feed = st.tabs([
+        "Histórico geral", "Movimentações de materiais", "Carga histórica", "Alimentação"
+    ])
     with history_tab_general:
         st.markdown("#### Alertas críticos diários")
         st.caption(
@@ -4431,9 +4439,134 @@ def _render_historical_loader():
 
 
 if globals().get("page") == "Histórico":
+    with history_tab_materials:
+        st.markdown("#### Movimentações de materiais")
+        st.caption(
+            "Registro permanente das ações realizadas nos materiais. Este histórico não é apagado "
+            "quando uma nova carga do MRP substitui ou limpa a lista operacional atual."
+        )
+
+        material_history_actions = [
+            "Todas",
+            "MARCADO COMO SEPARADO",
+            "PROBLEMA REGISTRADO",
+            "PRIORIDADE SOLICITADA",
+            "PRIORIDADE REMOVIDA",
+            "MARCADO COMO PENDENTE",
+            "COMENTÁRIO",
+        ]
+
+        with st.form("material_history_filter_form"):
+            mh1, mh2 = st.columns(2)
+            mh_project = mh1.text_input("Projeto / OP", key="material_history_project")
+            mh_product = mh2.text_input("Produto", key="material_history_product")
+
+            mh3, mh4 = st.columns(2)
+            mh_action = mh3.selectbox(
+                "Ação",
+                material_history_actions,
+                index=0,
+                key="material_history_action",
+            )
+            mh_responsible = mh4.text_input("Responsável", key="material_history_responsible")
+
+            mh5, mh6 = st.columns(2)
+            mh_start = mh5.date_input(
+                "Data inicial",
+                value=None,
+                format="DD/MM/YYYY",
+                key="material_history_start",
+            )
+            mh_end = mh6.date_input(
+                "Data final",
+                value=None,
+                format="DD/MM/YYYY",
+                key="material_history_end",
+            )
+            mh_submit = st.form_submit_button("Consultar histórico", use_container_width=True)
+
+        if "_material_history_rows" not in st.session_state or mh_submit:
+            try:
+                history_response = _supabase_api(
+                    "material_history",
+                    {
+                        "limit": 10000,
+                        "projeto": mh_project.strip() or None,
+                        "produto": mh_product.strip() or None,
+                        "acao": None if mh_action == "Todas" else mh_action,
+                        "responsavel": mh_responsible.strip() or None,
+                        "data_inicio": mh_start.isoformat() if mh_start is not None else None,
+                        "data_fim": mh_end.isoformat() if mh_end is not None else None,
+                    },
+                    timeout=45,
+                )
+                st.session_state["_material_history_rows"] = history_response.get("data") or []
+            except Exception as exc:
+                st.error(f"Não foi possível consultar o histórico de materiais: {exc}")
+                st.session_state["_material_history_rows"] = []
+
+        material_history_df = pd.DataFrame(st.session_state.get("_material_history_rows") or [])
+        if material_history_df.empty:
+            st.info("Nenhuma movimentação de material encontrada para os filtros informados.")
+        else:
+            history_dates = pd.to_datetime(
+                material_history_df.get("registrado_em"),
+                errors="coerce",
+                utc=True,
+            )
+            try:
+                history_dates = history_dates.dt.tz_convert("America/Sao_Paulo")
+            except Exception:
+                pass
+
+            material_history_view = pd.DataFrame({
+                "Data/Hora": history_dates.dt.strftime("%d/%m/%Y %H:%M").fillna(""),
+                "Projeto": material_history_df.get("projeto", ""),
+                "Produto": material_history_df.get("produto", ""),
+                "Ação": material_history_df.get("acao", ""),
+                "Status anterior": material_history_df.get("status_anterior", ""),
+                "Status novo": material_history_df.get("status_novo", ""),
+                "Responsável": material_history_df.get("responsavel", ""),
+                "Comentário": material_history_df.get("comentario", ""),
+            })
+
+            hm1, hm2, hm3, hm4 = st.columns(4)
+            hm1.metric("Registros", len(material_history_view))
+            hm2.metric(
+                "Separações",
+                int(material_history_view["Ação"].eq("MARCADO COMO SEPARADO").sum()),
+            )
+            hm3.metric(
+                "Problemas",
+                int(material_history_view["Ação"].eq("PROBLEMA REGISTRADO").sum()),
+            )
+            hm4.metric(
+                "Comentários",
+                int(material_history_view["Ação"].eq("COMENTÁRIO").sum()),
+            )
+
+            st.dataframe(
+                material_history_view,
+                use_container_width=True,
+                hide_index=True,
+                height=560,
+            )
+
+            material_history_excel = BytesIO()
+            with pd.ExcelWriter(material_history_excel, engine="openpyxl") as writer:
+                material_history_view.to_excel(writer, sheet_name="Movimentacoes_Materiais", index=False)
+            st.download_button(
+                "Exportar histórico filtrado em Excel",
+                data=material_history_excel.getvalue(),
+                file_name=f"historico_materiais_{today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="export_material_history",
+            )
+
     with history_tab_archive:
         _render_historical_loader()
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 28")
+st.sidebar.caption("UI build 29")
