@@ -13,6 +13,37 @@ from streamlit.delta_generator import DeltaGenerator
 SUPABASE_EDGE_URL = "https://cuixazpxkvniqldmmnth.supabase.co/functions/v1/entrega-cronograma-api"
 
 
+OPERATOR_REQUIRED_ACTIONS = {
+    "update_status_bulk",
+    "team_action",
+    "close_pcp_bulk",
+    "material_action_bulk",
+}
+
+
+def _session_operator():
+    return str(st.session_state.get("_operador_sessao", "") or "").strip()
+
+
+def _session_operator_input(label, key):
+    current = _session_operator()
+    if current:
+        st.caption(f"Operador da sessão: **{current}**")
+        return current
+
+    entered = st.text_input(
+        label,
+        value="",
+        placeholder="Informe seu nome para executar ações nesta sessão.",
+        key=key,
+    )
+    entered = str(entered or "").strip()
+    if entered:
+        st.session_state["_operador_sessao"] = entered
+        return entered
+    return ""
+
+
 def _supabase_anon_key():
     candidates = []
     try:
@@ -37,6 +68,13 @@ def _supabase_anon_key():
 
 
 def _supabase_api(action, payload=None, timeout=45):
+    if action in OPERATOR_REQUIRED_ACTIONS:
+        operator = _session_operator()
+        if not operator:
+            raise RuntimeError("Informe o operador responsável antes de executar esta ação.")
+        payload = dict(payload or {})
+        payload["responsavel"] = operator
+
     key = _supabase_anon_key()
     if not key:
         raise RuntimeError("SUPABASE_ANON_KEY não configurada nos Secrets do Streamlit.")
@@ -2448,7 +2486,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 71
+            <b>Build</b><br>APP core build 72
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2746,9 +2784,8 @@ elif page == "Cronograma":
 
                 st.markdown("#### Ação em lote")
                 st.info(f"{len(selected_ops)} OPs selecionadas.")
-                bulk_user = st.text_input(
-                    "Responsável",
-                    value="Operador",
+                bulk_user = _session_operator_input(
+                    "Operador responsável",
                     key="core_bulk_user",
                 )
 
@@ -2878,9 +2915,8 @@ elif page == "Cronograma":
                 if not can_change_status:
                     a1.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI SEPARAÇÃO.")
 
-                responsible = st.text_input(
-                    "Responsável",
-                    value="Operador",
+                responsible = _session_operator_input(
+                    "Operador responsável",
                     key=f"responsavel_{op_selected}",
                 )
 
@@ -2986,9 +3022,8 @@ elif page == "Cronograma":
             st.caption("Copie a mensagem pela prévia acima e abra o chat do Teams pelo link abaixo.")
             st.markdown(f"[Abrir chat no Teams]({teams_chat_url})")
 
-            user_pcp = st.text_input(
-                "Responsável / Operador",
-                value="Operador",
+            user_pcp = _session_operator_input(
+                "Operador responsável",
                 key="pcp_bulk_responsavel",
             )
             comentario_pcp = st.text_area(
@@ -3229,9 +3264,8 @@ elif page == "Materiais":
 
                     if not selected.empty:
                         st.markdown(f"**{len(selected)} item(ns) selecionado(s).**")
-                        responsavel_material = st.text_input(
-                            "Responsável / Operador",
-                            value="Operador",
+                        responsavel_material = _session_operator_input(
+                            "Operador responsável",
                             key="material_bulk_responsavel",
                         )
                         comentario_material = st.text_area(
@@ -4569,4 +4603,13 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 29")
+_sidebar_operator = _session_operator()
+if _sidebar_operator:
+    st.sidebar.caption(f"Operador da sessão: {_sidebar_operator}")
+    if st.sidebar.button("Trocar operador", key="trocar_operador_sessao"):
+        st.session_state.pop("_operador_sessao", None)
+        for _k in ["core_bulk_user", "pcp_bulk_responsavel", "material_bulk_responsavel"]:
+            st.session_state.pop(_k, None)
+        st.rerun()
+
+st.sidebar.caption("UI build 30")
