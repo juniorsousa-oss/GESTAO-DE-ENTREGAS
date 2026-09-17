@@ -1827,43 +1827,55 @@ def _split_mrp_context(value):
 
 
 def _recalcular_condicao_pendencia_materiais(df):
+    """Recalcula a condição dos materiais a partir da classificação final do Dashboard.
+
+    Regra única:
+      1) a OP precisa estar no grupo operacional "Com pendências" no Dashboard;
+      2) o material precisa ter a palavra "estoque" na coluna Ação.
+
+    A aba Materiais não reconstrói mais a regra por situação de separação, Data CM
+    ou data do cronograma. O Dashboard é a fonte de verdade para o estado da OP.
+    """
     if not isinstance(df, pd.DataFrame):
         return df
+
     base = df.copy()
-    required = {"Projeto", "Situação Separação", "Ação"}
+    required = {"Projeto", "Ação"}
     if base.empty or not required.issubset(base.columns):
-        if "Condição de pendência" not in base.columns:
-            base["Condição de pendência"] = "NÃO"
+        base["Condição de pendência"] = "NÃO"
         return base
 
     projeto_key = base["Projeto"].map(normalize_op)
-    possui_separacao = (
-        base["Situação Separação"].map(_normalize_delivery_state).eq("POSSUI SEPARAÇÃO")
-        .groupby(projeto_key)
-        .transform("any")
-        .fillna(False)
-    )
     atendimento_estoque = (
-        base["Ação"].fillna("").astype(str).str.contains("estoque", case=False, na=False)
+        base["Ação"]
+        .fillna("")
+        .astype(str)
+        .str.contains("estoque", case=False, na=False)
     )
 
-    # Only OPs effectively present in the active schedule with a valid separation date
-    # are eligible to generate material pendencies.
+    ops_com_pendencias = set()
     schedule = st.session_state.get("schedule", pd.DataFrame())
-    ops_programadas = set()
-    if isinstance(schedule, pd.DataFrame) and not schedule.empty and {"op", "data_separacao"}.issubset(schedule.columns):
-        datas = pd.to_datetime(schedule["data_separacao"], errors="coerce")
-        ops_programadas = {
-            normalize_op(op)
-            for op in schedule.loc[datas.notna(), "op"].tolist()
-            if normalize_op(op)
-        }
+    if isinstance(schedule, pd.DataFrame) and not schedule.empty and "op" in schedule.columns:
+        try:
+            dashboard = apply_operational_statuses(schedule, total_items_by_op())
+            if isinstance(dashboard, pd.DataFrame) and "grupo_operacional" in dashboard.columns:
+                mask_pendencia = dashboard["grupo_operacional"].fillna("").astype(str).eq("Com pendências")
+                ops_com_pendencias = {
+                    normalize_op(op)
+                    for op in dashboard.loc[mask_pendencia, "op"].tolist()
+                    if normalize_op(op)
+                }
+        except Exception:
+            # Em caso de indisponibilidade temporária da classificação do Dashboard,
+            # não cria falsos positivos de pendência na tela de Materiais.
+            ops_com_pendencias = set()
 
-    possui_data_cronograma = projeto_key.isin(ops_programadas)
+    projeto_em_pendencia = projeto_key.isin(ops_com_pendencias)
     base["Condição de pendência"] = (
-        possui_data_cronograma & possui_separacao & atendimento_estoque
+        projeto_em_pendencia & atendimento_estoque
     ).map({True: "SIM", False: "NÃO"})
     return base
+
 
 def import_materials(raw):
     missing = [c for c in MATERIAL_COLS if c not in raw.columns]
@@ -2435,7 +2447,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 67
+            <b>Build</b><br>APP core build 68
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4379,4 +4391,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 25")
+st.sidebar.caption("UI build 26")
