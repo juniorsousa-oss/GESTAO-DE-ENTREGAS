@@ -1,0 +1,31 @@
+name: Build 83 filter clear and black search
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build83_filter_clear_black_search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Build 83 patch
+        run: python scripts/build83_filter_clear_black_search.py
+      - name: Validate syntax
+        run: python -m py_compile streamlit_app.py
+      - name: Commit Build 83
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 83: refine filter controls and search styling"
+          git push
