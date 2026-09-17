@@ -24,6 +24,7 @@ OPERATOR_REQUIRED_ACTIONS = {
 
 CACHE_INVALIDATING_ACTIONS = {
     "save_logo",
+    "save_button_color",
     "save_nfs",
     "create_operator",
     "delete_operator",
@@ -153,6 +154,7 @@ def _supabase_api(action, payload=None, timeout=45):
         "load_material_ops": "entrega_listar_mrp_operacoes",
         "list_daily_alerts": "entrega_listar_alertas_diarios_v2",
         "save_logo": "entrega_salvar_logo",
+        "save_button_color": "entrega_salvar_cor_botoes",
         "load_nf_summary": "entrega_nf_resumo",
         "load_nf_filters": "entrega_nf_filtros",
         "load_nfs": "entrega_listar_nf_filtrada",
@@ -172,6 +174,9 @@ def _supabase_api(action, payload=None, timeout=45):
                 "p_logo_data": source.get("logo_data"),
                 "p_logo_mime": source.get("logo_mime"),
             }
+        elif action == "save_button_color":
+            source = payload or {}
+            rpc_payload = {"p_button_color": source.get("button_color") or "#111111"}
         elif action == "load_material_view":
             source = payload or {}
             rpc_payload = {
@@ -422,7 +427,7 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
-APP_BUILD = 83
+APP_BUILD = 84
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -2538,76 +2543,45 @@ saved_logo_data = str(app_config.get("logo_data") or "").strip()
 saved_logo_mime = str(app_config.get("logo_mime") or "image/png").strip() or "image/png"
 active_logo_data = saved_logo_data or default_logo_data
 active_logo_mime = saved_logo_mime if saved_logo_data else default_logo_mime
+button_color = str(app_config.get("button_color") or "#111111").strip().upper()
+if not re.fullmatch(r"#[0-9A-F]{6}", button_color):
+    button_color = "#111111"
 
 
-def _clear_filter_state(key, default=None, extra_keys=()):
-    st.session_state[key] = default
+def _clear_filter_group(values, extra_keys=()):
+    for key, value in dict(values or {}).items():
+        st.session_state[key] = value
     for extra in tuple(extra_keys or ()):
         st.session_state.pop(extra, None)
-
-
-def _filter_clear_submit(container, key, default=None, extra_keys=()):
-    return container.form_submit_button(
-        "×",
-        key=f"filter_clear__{key}",
-        help="Limpar este filtro",
-        use_container_width=True,
-        on_click=_clear_filter_state,
-        args=(key, default, tuple(extra_keys or ())),
-    )
-
-
-def _filter_clear_button(container, key, default=None, extra_keys=()):
-    return container.button(
-        "×",
-        key=f"filter_clear__{key}",
-        help="Limpar este filtro",
-        use_container_width=True,
-        on_click=_clear_filter_state,
-        args=(key, default, tuple(extra_keys or ())),
-    )
 
 
 st.markdown(
     """
     <style>
-    /* Build 83 — ações de pesquisa em preto, mantendo ações operacionais inalteradas. */
-    div[class*="st-key-dashboard_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-cronograma_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-materiais_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-nf_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-historico_alertas_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-material_history_filter_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-history_session_filters_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-cronograma_selecao_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"],
-    div[class*="st-key-materiais_selecao_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"] {
-        background: #111111 !important;
-        border-color: #111111 !important;
+    /* Build 84 — cor principal configurável. */
+    button[kind="primary"],
+    button[data-testid="stBaseButton-primary"],
+    button[data-testid="stBaseButton-primaryFormSubmit"],
+    button[data-testid*="primaryFormSubmit"],
+    div[data-testid="stFormSubmitButton"] button[kind="primary"] {
+        background-color: __BUTTON_COLOR__ !important;
+        border-color: __BUTTON_COLOR__ !important;
         color: #ffffff !important;
         box-shadow: none !important;
     }
-
-    div[class*="st-key-dashboard_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-cronograma_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-materiais_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-nf_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-historico_alertas_filtros_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-material_history_filter_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-history_session_filters_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-cronograma_selecao_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
-    div[class*="st-key-materiais_selecao_form"] div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
-        background: #000000 !important;
-        border-color: #000000 !important;
+    button[kind="primary"]:hover,
+    button[data-testid="stBaseButton-primary"]:hover,
+    button[data-testid="stBaseButton-primaryFormSubmit"]:hover,
+    button[data-testid*="primaryFormSubmit"]:hover,
+    div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
+        background-color: __BUTTON_COLOR__ !important;
+        border-color: __BUTTON_COLOR__ !important;
         color: #ffffff !important;
+        filter: brightness(0.92);
     }
 
-    /* Primeiro submit invisível: Enter sempre executa Pesquisar, nunca o X. */
-    div[class*="st-key-filter_enter__"] {
-        display: none !important;
-    }
-
-    /* X compacto para limpeza individual de cada filtro. */
-    div[class*="st-key-filter_clear__"] button {
+    /* Um único X por barra de filtros. */
+    div[class*="st-key-filter_clear_group__"] button {
         min-height: 38px !important;
         height: 38px !important;
         padding: 0 !important;
@@ -2619,13 +2593,14 @@ st.markdown(
         font-weight: 700 !important;
         box-shadow: none !important;
     }
-    div[class*="st-key-filter_clear__"] button:hover {
+    div[class*="st-key-filter_clear_group__"] button:hover {
         background: #f8fafc !important;
         border-color: #98a2b3 !important;
         color: #111111 !important;
+        filter: none !important;
     }
     </style>
-    """,
+    """.replace("__BUTTON_COLOR__", button_color),
     unsafe_allow_html=True,
 )
 
@@ -2755,6 +2730,36 @@ with st.sidebar:
             except Exception as exc:
                 st.error(f"Não foi possível salvar a logo: {exc}")
 
+        st.markdown('<div class="sidebar-current-label">Cor principal dos botões</div>', unsafe_allow_html=True)
+        selected_button_color = st.color_picker(
+            "Escolha a cor",
+            value=button_color,
+            key="entrega_button_color",
+            help="A cor escolhida será aplicada aos botões principais do aplicativo.",
+        )
+        if st.button(
+            "Salvar cor dos botões",
+            type="primary",
+            use_container_width=True,
+            key="save_button_color_settings",
+        ):
+            try:
+                theme_result = _supabase_api(
+                    "save_button_color",
+                    {"button_color": selected_button_color},
+                    timeout=20,
+                ).get("data") or {}
+                if isinstance(theme_result, list) and theme_result:
+                    theme_result = theme_result[0]
+                saved_color = str((theme_result or {}).get("button_color") or selected_button_color).upper()
+                app_config = {**app_config, "button_color": saved_color}
+                st.session_state["_entrega_app_config"] = app_config
+                st.session_state["_entrega_supabase_sync"] = False
+                st.success("Cor dos botões salva.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Não foi possível salvar a cor dos botões: {exc}")
+
         if st.button(
             "Bloquear configurações",
             use_container_width=True,
@@ -2769,7 +2774,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 83
+            <b>Build</b><br>APP core build 84
         </div>''',
         unsafe_allow_html=True,
     )
@@ -2911,66 +2916,59 @@ if page == "Dashboard":
                 break
 
         with st.form("dashboard_filtros_form", clear_on_submit=False, enter_to_submit=True):
-            dashboard_enter_submit = st.form_submit_button(
-                "Pesquisar",
-                key="filter_enter__dashboard_filtros_form",
-                type="primary",
-                use_container_width=True,
-            )
             df1, df2, df3, df4 = st.columns([1, 1, 1.35, 1.1])
-            with df1:
-                dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                dashboard_date_filter = dmain.selectbox(
-                    "Data de Separação",
-                    valid_dates,
-                    index=valid_dates.index(st.session_state.get("dashboard_data_filtro")),
-                    format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
-                    key="dashboard_data_filtro",
-                )
-                _filter_clear_submit(dclear, "dashboard_data_filtro", None, ("_dashboard_export_bytes",))
-            with df2:
-                smain, sclear = st.columns([8, 1], vertical_alignment="bottom")
-                dashboard_status_filter = smain.selectbox(
-                    "Status",
-                    valid_statuses,
-                    index=valid_statuses.index(st.session_state.get("dashboard_status_filtro", "Todos")),
-                    key="dashboard_status_filtro",
-                )
-                _filter_clear_submit(sclear, "dashboard_status_filtro", "Todos", ("_dashboard_export_bytes",))
-            with df3:
-                pmain, pclear = st.columns([8, 1], vertical_alignment="bottom")
-                dashboard_product_filter = pmain.text_input(
-                    "Produto",
-                    key="dashboard_produto_filtro",
-                    placeholder="Digite parte do produto",
-                )
-                _filter_clear_submit(pclear, "dashboard_produto_filtro", "", ("_dashboard_export_bytes",))
+            dashboard_date_filter = df1.selectbox(
+                "Data de Separação",
+                valid_dates,
+                index=valid_dates.index(st.session_state.get("dashboard_data_filtro")),
+                format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+                key="dashboard_data_filtro",
+            )
+            dashboard_status_filter = df2.selectbox(
+                "Status",
+                valid_statuses,
+                index=valid_statuses.index(st.session_state.get("dashboard_status_filtro", "Todos")),
+                key="dashboard_status_filtro",
+            )
+            dashboard_product_filter = df3.text_input(
+                "Produto",
+                key="dashboard_produto_filtro",
+                placeholder="Digite parte do produto",
+            )
             if active_filter == "Projetos":
-                with df4:
-                    prmain, prclear = st.columns([8, 1], vertical_alignment="bottom")
-                    dashboard_project_filter = prmain.selectbox(
-                        "Projeto",
-                        project_options,
-                        index=project_options.index(st.session_state.get("dashboard_projeto_filtro", "Todos")),
-                        key="dashboard_projeto_filtro",
-                    )
-                    _filter_clear_submit(prclear, "dashboard_projeto_filtro", "Todos", ("_dashboard_export_bytes",))
+                dashboard_project_filter = df4.selectbox(
+                    "Projeto",
+                    project_options,
+                    index=project_options.index(st.session_state.get("dashboard_projeto_filtro", "Todos")),
+                    key="dashboard_projeto_filtro",
+                )
             elif active_filter == "Com pendências":
-                with df4:
-                    bmain, bclear = st.columns([8, 1], vertical_alignment="bottom")
-                    bmain.selectbox(
-                        "Situação das pendências",
-                        balance_options,
-                        index=balance_options.index(st.session_state.get("dashboard_pendencias_saldo", "Todos")),
-                        key="dashboard_pendencias_saldo",
-                    )
-                    _filter_clear_submit(bclear, "dashboard_pendencias_saldo", "Todos", ("_dashboard_export_bytes",))
+                df4.selectbox(
+                    "Situação das pendências",
+                    balance_options,
+                    index=balance_options.index(st.session_state.get("dashboard_pendencias_saldo", "Todos")),
+                    key="dashboard_pendencias_saldo",
+                )
             else:
                 df4.caption("Os demais filtros se ajustam entre si após a pesquisa.")
-            dashboard_filter_submit = st.form_submit_button(
+            search_col, clear_col = st.columns([14, 1])
+            dashboard_filter_submit = search_col.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
-            dashboard_filter_submit = bool(dashboard_filter_submit or dashboard_enter_submit)
+            clear_col.form_submit_button(
+                "×",
+                key="filter_clear_group__dashboard",
+                help="Limpar todos os filtros desta aba",
+                use_container_width=True,
+                on_click=_clear_filter_group,
+                args=({
+                    "dashboard_data_filtro": None,
+                    "dashboard_status_filtro": "Todos",
+                    "dashboard_produto_filtro": "",
+                    "dashboard_projeto_filtro": "Todos",
+                    "dashboard_pendencias_saldo": "Todos",
+                }, ("_dashboard_export_bytes",)),
+            )
         st.caption("Filtros independentes: após Pesquisar/Enter, cada lista mostra somente opções compatíveis com os demais filtros ativos.")
         if dashboard_filter_submit:
             st.session_state.pop("_dashboard_export_bytes", None)
@@ -3154,49 +3152,44 @@ elif page == "Cronograma":
                     break
 
             with st.form("cronograma_filtros_form", clear_on_submit=False, enter_to_submit=True):
-                cronograma_enter_submit = st.form_submit_button(
-                    "Pesquisar",
-                    key="filter_enter__cronograma_filtros_form",
-                    type="primary",
-                    use_container_width=True,
-                )
                 f1, f2, f3, f4 = st.columns([1.55, 1, 1, 1])
-                with f1:
-                    qmain, qclear = st.columns([8, 1], vertical_alignment="bottom")
-                    search = qmain.text_input("Buscar OP / cliente / produto", key="cronograma_busca_filtro")
-                    _filter_clear_submit(qclear, "cronograma_busca_filtro", "", ("_cronograma_export_bytes",))
-                with f2:
-                    smain, sclear = st.columns([8, 1], vertical_alignment="bottom")
-                    status_filter = smain.multiselect(
-                        "Status",
-                        dynamic_status_options,
-                        default=st.session_state.get("cronograma_status_filtro") or dynamic_status_options,
-                        key="cronograma_status_filtro",
-                    )
-                    _filter_clear_submit(sclear, "cronograma_status_filtro", [], ("_cronograma_export_bytes",))
-                with f3:
-                    dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                    date_filter = dmain.selectbox(
-                        "Data de Separação",
-                        [None] + dynamic_date_options,
-                        index=([None] + dynamic_date_options).index(st.session_state.get("cronograma_data_filtro")),
-                        format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
-                        key="cronograma_data_filtro",
-                    )
-                    _filter_clear_submit(dclear, "cronograma_data_filtro", None, ("_cronograma_export_bytes",))
-                with f4:
-                    pmain, pclear = st.columns([8, 1], vertical_alignment="bottom")
-                    priority_filter = pmain.selectbox(
-                        "Prioridade",
-                        dynamic_priority_options,
-                        index=dynamic_priority_options.index(st.session_state.get("cronograma_prioridade_filtro", "Todos")),
-                        key="cronograma_prioridade_filtro",
-                    )
-                    _filter_clear_submit(pclear, "cronograma_prioridade_filtro", "Todos", ("_cronograma_export_bytes",))
-                cronograma_filter_submit = st.form_submit_button(
+                search = f1.text_input("Buscar OP / cliente / produto", key="cronograma_busca_filtro")
+                status_filter = f2.multiselect(
+                    "Status",
+                    dynamic_status_options,
+                    default=st.session_state.get("cronograma_status_filtro") or dynamic_status_options,
+                    key="cronograma_status_filtro",
+                )
+                date_filter = f3.selectbox(
+                    "Data de Separação",
+                    [None] + dynamic_date_options,
+                    index=([None] + dynamic_date_options).index(st.session_state.get("cronograma_data_filtro")),
+                    format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+                    key="cronograma_data_filtro",
+                )
+                priority_filter = f4.selectbox(
+                    "Prioridade",
+                    dynamic_priority_options,
+                    index=dynamic_priority_options.index(st.session_state.get("cronograma_prioridade_filtro", "Todos")),
+                    key="cronograma_prioridade_filtro",
+                )
+                search_col, clear_col = st.columns([14, 1])
+                cronograma_filter_submit = search_col.form_submit_button(
                     "Pesquisar", type="primary", use_container_width=True
                 )
-                cronograma_filter_submit = bool(cronograma_filter_submit or cronograma_enter_submit)
+                clear_col.form_submit_button(
+                    "×",
+                    key="filter_clear_group__cronograma",
+                    help="Limpar todos os filtros desta aba",
+                    use_container_width=True,
+                    on_click=_clear_filter_group,
+                    args=({
+                        "cronograma_busca_filtro": "",
+                        "cronograma_status_filtro": [],
+                        "cronograma_data_filtro": None,
+                        "cronograma_prioridade_filtro": "Todos",
+                    }, ("_cronograma_export_bytes",)),
+                )
             st.caption("Filtros independentes: cada opção é recalculada usando os demais filtros ativos, sem ordem obrigatória.")
             if cronograma_filter_submit:
                 st.session_state.pop("_cronograma_export_bytes", None)
@@ -3780,77 +3773,67 @@ elif page == "Materiais":
             st.session_state.pop("_materiais_view_cache", None)
 
         with st.form("materiais_filtros_form", clear_on_submit=False, enter_to_submit=True):
-            materiais_enter_submit = st.form_submit_button(
-                "Pesquisar",
-                key="filter_enter__materiais_filtros_form",
-                type="primary",
-                use_container_width=True,
-            )
             f_pendencia, f_projeto, f_prioridade = st.columns([1, 2.0, 1.15])
-            with f_pendencia:
-                cmain, cclear = st.columns([8, 1], vertical_alignment="bottom")
-                condicao_material = cmain.selectbox(
-                    "Condição de pendência",
-                    pendencia_options,
-                    index=pendencia_options.index(condicao_atual),
-                    key="materiais_pendencia_filtro",
-                )
-                _filter_clear_submit(cclear, "materiais_pendencia_filtro", "Todos", ("_materiais_view_cache", "_material_export_bytes"))
-            with f_projeto:
-                pmain, pclear = st.columns([8, 1], vertical_alignment="bottom")
-                projeto_material = pmain.selectbox(
-                    "Projeto",
-                    projeto_options,
-                    index=projeto_options.index(projeto_atual),
-                    key="materiais_projeto_filtro",
-                    help="A lista mostra somente as OPs disponíveis no conjunto consultado.",
-                )
-                _filter_clear_submit(pclear, "materiais_projeto_filtro", "Todos", ("_materiais_view_cache", "_material_export_bytes"))
-            with f_prioridade:
-                pmain2, pclear2 = st.columns([8, 1], vertical_alignment="bottom")
-                prioridade_material = pmain2.selectbox(
-                    "Prioridade",
-                    prioridade_options,
-                    index=prioridade_options.index(prioridade_atual),
-                    key="materiais_prioridade_filtro",
-                )
-                _filter_clear_submit(pclear2, "materiais_prioridade_filtro", "Todos", ("_materiais_view_cache", "_material_export_bytes"))
-
+            condicao_material = f_pendencia.selectbox(
+                "Condição de pendência",
+                pendencia_options,
+                index=pendencia_options.index(condicao_atual),
+                key="materiais_pendencia_filtro",
+            )
+            projeto_material = f_projeto.selectbox(
+                "Projeto",
+                projeto_options,
+                index=projeto_options.index(projeto_atual),
+                key="materiais_projeto_filtro",
+                help="A lista mostra somente as OPs disponíveis no conjunto consultado.",
+            )
+            prioridade_material = f_prioridade.selectbox(
+                "Prioridade",
+                prioridade_options,
+                index=prioridade_options.index(prioridade_atual),
+                key="materiais_prioridade_filtro",
+            )
             f_busca, f_data_campo, f_data = st.columns([1.6, 1, 1])
-            with f_busca:
-                bmain, bclear = st.columns([8, 1], vertical_alignment="bottom")
-                busca_material = bmain.text_input(
-                    "Pesquisar material",
-                    value=busca_atual,
-                    key="materiais_busca_filtro",
-                    placeholder="Projeto, código ou descrição",
-                )
-                _filter_clear_submit(bclear, "materiais_busca_filtro", "", ("_materiais_view_cache", "_material_export_bytes"))
-            with f_data_campo:
-                rmain, rclear = st.columns([8, 1], vertical_alignment="bottom")
-                data_campo_material = rmain.selectbox(
-                    "Referência da data",
-                    ["Última Solicitação", "Data CM", "Última Entrada"],
-                    index=["Última Solicitação", "Data CM", "Última Entrada"].index(data_campo_atual)
-                        if data_campo_atual in ["Última Solicitação", "Data CM", "Última Entrada"] else 0,
-                    key="materiais_data_campo",
-                    help="Ao trocar a referência e pesquisar, a lista de datas é atualizada com as datas realmente disponíveis.",
-                )
-                _filter_clear_submit(rclear, "materiais_data_campo", "Última Solicitação", ("_materiais_view_cache", "_material_export_bytes"))
-            with f_data:
-                dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                data_material = dmain.selectbox(
-                    "Data",
-                    data_options,
-                    index=data_options.index(data_filtro_atual) if data_filtro_atual in data_options else 0,
-                    format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
-                    key="materiais_data_filtro",
-                )
-                _filter_clear_submit(dclear, "materiais_data_filtro", None, ("_materiais_view_cache", "_material_export_bytes"))
-            materiais_filter_submit = st.form_submit_button(
+            busca_material = f_busca.text_input(
+                "Pesquisar material",
+                value=busca_atual,
+                key="materiais_busca_filtro",
+                placeholder="Projeto, código ou descrição",
+            )
+            data_campo_material = f_data_campo.selectbox(
+                "Referência da data",
+                ["Última Solicitação", "Data CM", "Última Entrada"],
+                index=["Última Solicitação", "Data CM", "Última Entrada"].index(data_campo_atual)
+                    if data_campo_atual in ["Última Solicitação", "Data CM", "Última Entrada"] else 0,
+                key="materiais_data_campo",
+                help="Ao trocar a referência e pesquisar, a lista de datas é atualizada com as datas realmente disponíveis.",
+            )
+            data_material = f_data.selectbox(
+                "Data",
+                data_options,
+                index=data_options.index(data_filtro_atual) if data_filtro_atual in data_options else 0,
+                format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+                key="materiais_data_filtro",
+            )
+            search_col, clear_col = st.columns([14, 1])
+            materiais_filter_submit = search_col.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
-            materiais_filter_submit = bool(materiais_filter_submit or materiais_enter_submit)
+            clear_col.form_submit_button(
+                "×",
+                key="filter_clear_group__materiais",
+                help="Limpar todos os filtros desta aba",
+                use_container_width=True,
+                on_click=_clear_filter_group,
+                args=({
+                    "materiais_pendencia_filtro": "Todos",
+                    "materiais_projeto_filtro": "Todos",
+                    "materiais_prioridade_filtro": "Todos",
+                    "materiais_busca_filtro": "",
+                    "materiais_data_campo": "Última Solicitação",
+                    "materiais_data_filtro": None,
+                }, ("_materiais_view_cache", "_material_export_bytes")),
+            )
         st.caption("Filtros independentes: após Pesquisar/Enter, cada lista considera todos os outros filtros ativos. A seleção de materiais reutiliza o resultado em memória.")
         if materiais_filter_submit:
             st.session_state.pop("_material_export_bytes", None)
@@ -4199,57 +4182,45 @@ elif page == "NFs":
                 nf_dates.append(dt.date())
 
         with st.form("nf_filtros_form", clear_on_submit=False, enter_to_submit=True):
-            nf_enter_submit = st.form_submit_button(
-                "Pesquisar",
-                key="filter_enter__nf_filtros_form",
-                type="primary",
-                use_container_width=True,
-            )
             f1, f2, f3 = st.columns([1, 1, 1.5])
-            with f1:
-                cmain, cclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_class_filter = cmain.selectbox(
-                    "Classificação", class_options, index=0, key="nf_class_filter"
-                )
-                _filter_clear_submit(cclear, "nf_class_filter", "Todos", ("_nf_export_bytes",))
-            with f2:
-                dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_date_filter = dmain.selectbox(
-                    "Data",
-                    [None] + nf_dates,
-                    index=0,
-                    format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
-                    key="nf_date_filter",
-                )
-                _filter_clear_submit(dclear, "nf_date_filter", None, ("_nf_export_bytes",))
-            with f3:
-                nmain, nclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_nature_filter = nmain.selectbox(
-                    "Natureza", nature_options, index=0, key="nf_nature_filter"
-                )
-                _filter_clear_submit(nclear, "nf_nature_filter", "Todos", ("_nf_export_bytes",))
-
+            nf_class_filter = f1.selectbox(
+                "Classificação", class_options, index=0, key="nf_class_filter"
+            )
+            nf_date_filter = f2.selectbox(
+                "Data",
+                [None] + nf_dates,
+                index=0,
+                format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+                key="nf_date_filter",
+            )
+            nf_nature_filter = f3.selectbox(
+                "Natureza", nature_options, index=0, key="nf_nature_filter"
+            )
             f4, f5, f6, f7 = st.columns(4)
-            with f4:
-                wmain, wclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_documento = wmain.text_input("Documento", key="nf_documento_filter")
-                _filter_clear_submit(wclear, "nf_documento_filter", "", ("_nf_export_bytes",))
-            with f5:
-                wmain, wclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_fornecedor = wmain.text_input("Fornecedor", key="nf_fornecedor_filter")
-                _filter_clear_submit(wclear, "nf_fornecedor_filter", "", ("_nf_export_bytes",))
-            with f6:
-                wmain, wclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_codigo = wmain.text_input("Código", key="nf_codigo_filter")
-                _filter_clear_submit(wclear, "nf_codigo_filter", "", ("_nf_export_bytes",))
-            with f7:
-                wmain, wclear = st.columns([8, 1], vertical_alignment="bottom")
-                nf_produto = wmain.text_input("Produto", key="nf_produto_filter")
-                _filter_clear_submit(wclear, "nf_produto_filter", "", ("_nf_export_bytes",))
-            nf_filter_submit = st.form_submit_button(
+            nf_documento = f4.text_input("Documento", key="nf_documento_filter")
+            nf_fornecedor = f5.text_input("Fornecedor", key="nf_fornecedor_filter")
+            nf_codigo = f6.text_input("Código", key="nf_codigo_filter")
+            nf_produto = f7.text_input("Produto", key="nf_produto_filter")
+            search_col, clear_col = st.columns([14, 1])
+            nf_filter_submit = search_col.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
-            nf_filter_submit = bool(nf_filter_submit or nf_enter_submit)
+            clear_col.form_submit_button(
+                "×",
+                key="filter_clear_group__nfs",
+                help="Limpar todos os filtros desta aba",
+                use_container_width=True,
+                on_click=_clear_filter_group,
+                args=({
+                    "nf_class_filter": "Todos",
+                    "nf_date_filter": None,
+                    "nf_nature_filter": "Todos",
+                    "nf_documento_filter": "",
+                    "nf_fornecedor_filter": "",
+                    "nf_codigo_filter": "",
+                    "nf_produto_filter": "",
+                }, ("_nf_export_bytes",)),
+            )
         st.caption("Os filtros são aplicados somente ao clicar em Pesquisar ou pressionar Enter.")
         if nf_filter_submit:
             st.session_state.pop("_nf_export_bytes", None)
@@ -4332,34 +4303,33 @@ elif page == "Histórico":
         )
 
         with st.form("historico_alertas_filtros_form", clear_on_submit=False, enter_to_submit=True):
-            historico_enter_submit = st.form_submit_button(
-                "Pesquisar",
-                key="filter_enter__historico_alertas_filtros_form",
-                type="primary",
-                use_container_width=True,
-            )
             hf1, hf2 = st.columns([1, 1.6])
-            with hf1:
-                dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                historico_data = dmain.date_input(
-                    "Data do registro",
-                    value=None,
-                    key="historico_alertas_data_v2",
-                    format="DD/MM/YYYY",
-                )
-                _filter_clear_submit(dclear, "historico_alertas_data_v2", None, ("_alertas_export_bytes",))
-            with hf2:
-                omain, oclear = st.columns([8, 1], vertical_alignment="bottom")
-                historico_op = omain.text_input(
-                    "Buscar OP",
-                    key="historico_alertas_op_v2",
-                    placeholder="Digite parte da OP",
-                )
-                _filter_clear_submit(oclear, "historico_alertas_op_v2", "", ("_alertas_export_bytes",))
-            historico_filter_submit = st.form_submit_button(
+            historico_data = hf1.date_input(
+                "Data do registro",
+                value=None,
+                key="historico_alertas_data_v2",
+                format="DD/MM/YYYY",
+            )
+            historico_op = hf2.text_input(
+                "Buscar OP",
+                key="historico_alertas_op_v2",
+                placeholder="Digite parte da OP",
+            )
+            search_col, clear_col = st.columns([14, 1])
+            historico_filter_submit = search_col.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
-            historico_filter_submit = bool(historico_filter_submit or historico_enter_submit)
+            clear_col.form_submit_button(
+                "×",
+                key="filter_clear_group__historico_alertas",
+                help="Limpar todos os filtros desta aba",
+                use_container_width=True,
+                on_click=_clear_filter_group,
+                args=({
+                    "historico_alertas_data_v2": None,
+                    "historico_alertas_op_v2": "",
+                }, ("_alertas_export_bytes",)),
+            )
         st.caption("A consulta é executada somente ao clicar em Pesquisar ou pressionar Enter.")
 
         daily_alerts = pd.DataFrame()
@@ -4465,30 +4435,30 @@ elif page == "Histórico":
         else:
             event_options = sorted(hist["evento"].dropna().unique().tolist())
             with st.form("history_session_filters_form", clear_on_submit=False, enter_to_submit=True):
-                st.form_submit_button(
-                    "Pesquisar",
-                    key="filter_enter__history_session_filters_form",
-                    type="primary",
-                    use_container_width=True,
-                )
                 c1, c2 = st.columns([1.4, 1])
-                with c1:
-                    smain, sclear = st.columns([8, 1], vertical_alignment="bottom")
-                    search = smain.text_input(
-                        "Buscar OP / evento / detalhe",
-                        key="history_session_search",
-                    )
-                    _filter_clear_submit(sclear, "history_session_search", "")
-                with c2:
-                    emain, eclear = st.columns([8, 1], vertical_alignment="bottom")
-                    event_filter = emain.multiselect(
-                        "Tipo de evento",
-                        event_options,
-                        default=event_options,
-                        key="history_session_events",
-                    )
-                    _filter_clear_submit(eclear, "history_session_events", [])
-                st.form_submit_button("Pesquisar", type="primary", use_container_width=True)
+                search = c1.text_input(
+                    "Buscar OP / evento / detalhe",
+                    key="history_session_search",
+                )
+                event_filter = c2.multiselect(
+                    "Tipo de evento",
+                    event_options,
+                    default=event_options,
+                    key="history_session_events",
+                )
+                search_col, clear_col = st.columns([14, 1])
+                search_col.form_submit_button("Pesquisar", type="primary", use_container_width=True)
+                clear_col.form_submit_button(
+                    "×",
+                    key="filter_clear_group__history_session",
+                    help="Limpar todos os filtros desta aba",
+                    use_container_width=True,
+                    on_click=_clear_filter_group,
+                    args=({
+                        "history_session_search": "",
+                        "history_session_events": [],
+                    }, ()),
+                )
             view = hist.copy()
             if event_filter:
                 view = view[view["evento"].isin(event_filter)].copy()
@@ -5265,60 +5235,49 @@ if globals().get("page") == "Histórico":
         ]
 
         with st.form("material_history_filter_form", clear_on_submit=False, enter_to_submit=True):
-            mh_enter_submit = st.form_submit_button(
-                "Pesquisar",
-                key="filter_enter__material_history_filter_form",
-                type="primary",
-                use_container_width=True,
-            )
             mh1, mh2 = st.columns(2)
-            with mh1:
-                pmain, pclear = st.columns([8, 1], vertical_alignment="bottom")
-                mh_project = pmain.text_input("Projeto / OP", key="material_history_project")
-                _filter_clear_submit(pclear, "material_history_project", "", ("_material_history_rows",))
-            with mh2:
-                pmain, pclear = st.columns([8, 1], vertical_alignment="bottom")
-                mh_product = pmain.text_input("Produto", key="material_history_product")
-                _filter_clear_submit(pclear, "material_history_product", "", ("_material_history_rows",))
-
+            mh_project = mh1.text_input("Projeto / OP", key="material_history_project")
+            mh_product = mh2.text_input("Produto", key="material_history_product")
             mh3, mh4 = st.columns(2)
-            with mh3:
-                amain, aclear = st.columns([8, 1], vertical_alignment="bottom")
-                mh_action = amain.selectbox(
-                    "Ação",
-                    material_history_actions,
-                    index=0,
-                    key="material_history_action",
-                )
-                _filter_clear_submit(aclear, "material_history_action", "Todas", ("_material_history_rows",))
-            with mh4:
-                rmain, rclear = st.columns([8, 1], vertical_alignment="bottom")
-                mh_responsible = rmain.text_input("Responsável", key="material_history_responsible")
-                _filter_clear_submit(rclear, "material_history_responsible", "", ("_material_history_rows",))
-
+            mh_action = mh3.selectbox(
+                "Ação",
+                material_history_actions,
+                index=0,
+                key="material_history_action",
+            )
+            mh_responsible = mh4.text_input("Responsável", key="material_history_responsible")
             mh5, mh6 = st.columns(2)
-            with mh5:
-                dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                mh_start = dmain.date_input(
-                    "Data inicial",
-                    value=None,
-                    format="DD/MM/YYYY",
-                    key="material_history_start",
-                )
-                _filter_clear_submit(dclear, "material_history_start", None, ("_material_history_rows",))
-            with mh6:
-                dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
-                mh_end = dmain.date_input(
-                    "Data final",
-                    value=None,
-                    format="DD/MM/YYYY",
-                    key="material_history_end",
-                )
-                _filter_clear_submit(dclear, "material_history_end", None, ("_material_history_rows",))
-            mh_submit = st.form_submit_button(
+            mh_start = mh5.date_input(
+                "Data inicial",
+                value=None,
+                format="DD/MM/YYYY",
+                key="material_history_start",
+            )
+            mh_end = mh6.date_input(
+                "Data final",
+                value=None,
+                format="DD/MM/YYYY",
+                key="material_history_end",
+            )
+            search_col, clear_col = st.columns([14, 1])
+            mh_submit = search_col.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
-            mh_submit = bool(mh_submit or mh_enter_submit)
+            clear_col.form_submit_button(
+                "×",
+                key="filter_clear_group__material_history",
+                help="Limpar todos os filtros desta aba",
+                use_container_width=True,
+                on_click=_clear_filter_group,
+                args=({
+                    "material_history_project": "",
+                    "material_history_product": "",
+                    "material_history_action": "Todas",
+                    "material_history_responsible": "",
+                    "material_history_start": None,
+                    "material_history_end": None,
+                }, ("_material_history_rows",)),
+            )
 
         if "_material_history_rows" not in st.session_state or mh_submit:
             try:
