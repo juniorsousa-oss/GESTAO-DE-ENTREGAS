@@ -1,0 +1,52 @@
+name: Build 70 - material problem flow
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build70_material_problem_flow.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Build 70
+        run: python scripts/build70_material_problem_flow.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Validate material problem flow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('streamlit_app.py').read_text(encoding='utf-8')
+          checks = [
+              '"Com problema"',
+              'f"Materiais com problema ({len(problemas_view)})"',
+              '"Relatar problema"',
+              'if not comentario_material.strip():',
+              'f"Separados ({len(separados_view)})"',
+              'APP core build 70',
+          ]
+          missing = [x for x in checks if x not in text]
+          assert not missing, f'Missing checks: {missing}'
+          print('Build 70 material problem flow validated')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 70: add material problem workflow"
+          git push
