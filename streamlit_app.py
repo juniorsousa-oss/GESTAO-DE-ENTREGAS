@@ -2601,6 +2601,11 @@ st.markdown(
         color: #ffffff !important;
     }
 
+    /* Primeiro submit invisível: Enter sempre executa Pesquisar, nunca o X. */
+    div[class*="st-key-filter_enter__"] {
+        display: none !important;
+    }
+
     /* X compacto para limpeza individual de cada filtro. */
     div[class*="st-key-filter_clear__"] button {
         min-height: 38px !important;
@@ -2906,6 +2911,12 @@ if page == "Dashboard":
                 break
 
         with st.form("dashboard_filtros_form", clear_on_submit=False, enter_to_submit=True):
+            dashboard_enter_submit = st.form_submit_button(
+                "Pesquisar",
+                key="filter_enter__dashboard_filtros_form",
+                type="primary",
+                use_container_width=True,
+            )
             df1, df2, df3, df4 = st.columns([1, 1, 1.35, 1.1])
             with df1:
                 dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -2959,6 +2970,7 @@ if page == "Dashboard":
             dashboard_filter_submit = st.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
+            dashboard_filter_submit = bool(dashboard_filter_submit or dashboard_enter_submit)
         st.caption("Filtros independentes: após Pesquisar/Enter, cada lista mostra somente opções compatíveis com os demais filtros ativos.")
         if dashboard_filter_submit:
             st.session_state.pop("_dashboard_export_bytes", None)
@@ -3142,6 +3154,12 @@ elif page == "Cronograma":
                     break
 
             with st.form("cronograma_filtros_form", clear_on_submit=False, enter_to_submit=True):
+                cronograma_enter_submit = st.form_submit_button(
+                    "Pesquisar",
+                    key="filter_enter__cronograma_filtros_form",
+                    type="primary",
+                    use_container_width=True,
+                )
                 f1, f2, f3, f4 = st.columns([1.55, 1, 1, 1])
                 with f1:
                     qmain, qclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -3178,6 +3196,7 @@ elif page == "Cronograma":
                 cronograma_filter_submit = st.form_submit_button(
                     "Pesquisar", type="primary", use_container_width=True
                 )
+                cronograma_filter_submit = bool(cronograma_filter_submit or cronograma_enter_submit)
             st.caption("Filtros independentes: cada opção é recalculada usando os demais filtros ativos, sem ordem obrigatória.")
             if cronograma_filter_submit:
                 st.session_state.pop("_cronograma_export_bytes", None)
@@ -3761,6 +3780,12 @@ elif page == "Materiais":
             st.session_state.pop("_materiais_view_cache", None)
 
         with st.form("materiais_filtros_form", clear_on_submit=False, enter_to_submit=True):
+            materiais_enter_submit = st.form_submit_button(
+                "Pesquisar",
+                key="filter_enter__materiais_filtros_form",
+                type="primary",
+                use_container_width=True,
+            )
             f_pendencia, f_projeto, f_prioridade = st.columns([1, 2.0, 1.15])
             with f_pendencia:
                 cmain, cclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -3825,6 +3850,7 @@ elif page == "Materiais":
             materiais_filter_submit = st.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
+            materiais_filter_submit = bool(materiais_filter_submit or materiais_enter_submit)
         st.caption("Filtros independentes: após Pesquisar/Enter, cada lista considera todos os outros filtros ativos. A seleção de materiais reutiliza o resultado em memória.")
         if materiais_filter_submit:
             st.session_state.pop("_material_export_bytes", None)
@@ -4173,6 +4199,12 @@ elif page == "NFs":
                 nf_dates.append(dt.date())
 
         with st.form("nf_filtros_form", clear_on_submit=False, enter_to_submit=True):
+            nf_enter_submit = st.form_submit_button(
+                "Pesquisar",
+                key="filter_enter__nf_filtros_form",
+                type="primary",
+                use_container_width=True,
+            )
             f1, f2, f3 = st.columns([1, 1, 1.5])
             with f1:
                 cmain, cclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -4217,6 +4249,7 @@ elif page == "NFs":
             nf_filter_submit = st.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
+            nf_filter_submit = bool(nf_filter_submit or nf_enter_submit)
         st.caption("Os filtros são aplicados somente ao clicar em Pesquisar ou pressionar Enter.")
         if nf_filter_submit:
             st.session_state.pop("_nf_export_bytes", None)
@@ -4299,6 +4332,12 @@ elif page == "Histórico":
         )
 
         with st.form("historico_alertas_filtros_form", clear_on_submit=False, enter_to_submit=True):
+            historico_enter_submit = st.form_submit_button(
+                "Pesquisar",
+                key="filter_enter__historico_alertas_filtros_form",
+                type="primary",
+                use_container_width=True,
+            )
             hf1, hf2 = st.columns([1, 1.6])
             with hf1:
                 dmain, dclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -4320,6 +4359,7 @@ elif page == "Histórico":
             historico_filter_submit = st.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
+            historico_filter_submit = bool(historico_filter_submit or historico_enter_submit)
         st.caption("A consulta é executada somente ao clicar em Pesquisar ou pressionar Enter.")
 
         daily_alerts = pd.DataFrame()
@@ -4425,6 +4465,12 @@ elif page == "Histórico":
         else:
             event_options = sorted(hist["evento"].dropna().unique().tolist())
             with st.form("history_session_filters_form", clear_on_submit=False, enter_to_submit=True):
+                st.form_submit_button(
+                    "Pesquisar",
+                    key="filter_enter__history_session_filters_form",
+                    type="primary",
+                    use_container_width=True,
+                )
                 c1, c2 = st.columns([1.4, 1])
                 with c1:
                     smain, sclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -5219,6 +5265,12 @@ if globals().get("page") == "Histórico":
         ]
 
         with st.form("material_history_filter_form", clear_on_submit=False, enter_to_submit=True):
+            mh_enter_submit = st.form_submit_button(
+                "Pesquisar",
+                key="filter_enter__material_history_filter_form",
+                type="primary",
+                use_container_width=True,
+            )
             mh1, mh2 = st.columns(2)
             with mh1:
                 pmain, pclear = st.columns([8, 1], vertical_alignment="bottom")
@@ -5266,6 +5318,7 @@ if globals().get("page") == "Histórico":
             mh_submit = st.form_submit_button(
                 "Pesquisar", type="primary", use_container_width=True
             )
+            mh_submit = bool(mh_submit or mh_enter_submit)
 
         if "_material_history_rows" not in st.session_state or mh_submit:
             try:
