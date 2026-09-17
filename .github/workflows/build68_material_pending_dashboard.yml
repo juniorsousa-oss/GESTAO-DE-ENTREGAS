@@ -47,3 +47,5 @@ jobs:
           fi
           git commit -m "Build 68: derive material pendency from Dashboard classification"
           git push
+
+# rerun: 2
