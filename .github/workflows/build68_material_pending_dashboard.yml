@@ -1,0 +1,49 @@
+name: Build 68 - material pending from dashboard
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build68_material_pending_dashboard.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Build 68
+        run: python scripts/build68_material_pending_from_dashboard.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Validate material rule
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('streamlit_app.py').read_text(encoding='utf-8')
+          start = text.index('def _recalcular_condicao_pendencia_materiais(df):')
+          end = text.index('def import_materials(raw):', start)
+          helper = text[start:end]
+          assert 'grupo_operacional' in helper
+          assert 'Com pendências' in helper
+          assert 'str.contains("estoque"' in helper
+          assert 'possui_data_cronograma' not in helper
+          print('Material pending rule validated')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 68: derive material pendency from Dashboard classification"
+          git push
