@@ -2522,7 +2522,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 73
+            <b>Build</b><br>APP core build 74
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3258,9 +3258,13 @@ elif page == "Materiais":
             separados_view = view[view["Status separação"] == "Separado"].reset_index(drop=True)
             problemas_view = view[view["Status separação"] == "Com problema"].reset_index(drop=True)
 
+            total_condicao_pendencia = int(
+                view["Condição de pendência"].fillna("").astype(str).str.strip().str.upper().eq("SIM").sum()
+            )
+
             mat_m1, mat_m2, mat_m3, mat_m4 = st.columns(4)
             mat_m1.metric("Total de linhas", len(view))
-            mat_m2.metric("Pendências", len(pendentes_view))
+            mat_m2.metric("Pendências", total_condicao_pendencia)
             mat_m3.metric("Separados", len(separados_view))
             mat_m4.metric("Com problema", len(problemas_view))
 
@@ -4739,4 +4743,4 @@ if _sidebar_operator:
             st.session_state.pop(_k, None)
         st.rerun()
 
-st.sidebar.caption("UI build 31")
+st.sidebar.caption("UI build 32")
