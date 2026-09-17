@@ -1,0 +1,51 @@
+name: Build 74 - material pending metric
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build74_material_pending_metric.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Build 74
+        run: python scripts/build74_material_pending_metric.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Validate pending metric
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('streamlit_app.py').read_text(encoding='utf-8')
+          checks = [
+              'total_condicao_pendencia = int(',
+              '.eq("SIM").sum()',
+              'mat_m2.metric("Pendências", total_condicao_pendencia)',
+              'APP core build 74',
+              'UI build 32',
+          ]
+          missing = [x for x in checks if x not in text]
+          assert not missing, missing
+          print('Build 74 validation OK')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 74: count pending materials by condition"
+          git push
