@@ -1,0 +1,39 @@
+name: Build 81 material export limit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build81_material_export_limit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Increase explicit export limit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('streamlit_app.py')
+          t = p.read_text(encoding='utf-8')
+          old = '                        limit=5000,\n                        use_session_cache=False,'
+          new = '                        limit=10000,\n                        use_session_cache=False,'
+          if old not in t:
+              raise SystemExit('export limit marker not found')
+          p.write_text(t.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Validate syntax
+        run: python -m py_compile streamlit_app.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Build 81: export all filtered materials"
+          git push
