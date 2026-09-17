@@ -1,0 +1,31 @@
+name: Build 84 single clear and theme color
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build84_single_clear_and_theme_color.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Build 84 patch
+        run: python scripts/build84_single_clear_and_theme_color.py
+      - name: Validate syntax
+        run: python -m py_compile streamlit_app.py
+      - name: Commit Build 84
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 84: single filter clear and configurable button color"
+          git push
