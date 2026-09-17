@@ -3796,7 +3796,6 @@ elif page == "Materiais":
                         )
                     st.caption("Os checkboxes são acumulados sem recarregar a consulta; pressione Enter ou Aplicar seleção quando terminar.")
                     selected = edited[edited["Selecionar"].fillna(False).astype(bool)].copy()
-                    selected = edited[edited["Selecionar"].fillna(False).astype(bool)].copy()
 
                     if not selected.empty:
                         st.markdown(f"**{len(selected)} item(ns) selecionado(s).**")
