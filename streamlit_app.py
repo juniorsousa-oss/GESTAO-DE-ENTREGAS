@@ -72,27 +72,32 @@ def _session_operator_input(label, key):
         return ""
 
     if current and current in names:
-        selected = st.selectbox(
-            label,
-            names,
-            index=names.index(current),
-            key=key,
-            help="O último usuário permanece selecionado. Altere aqui somente quando necessário.",
-        )
-    else:
-        placeholder = "Selecione o operador"
-        selected = st.selectbox(
-            label,
-            [placeholder] + names,
-            index=0,
-            key=key,
-        )
-        if selected == placeholder:
-            return ""
+        st.caption(f"{label}: **{current}**")
+        change_key = f"{key}_alterar"
+        if st.checkbox("Alterar usuário", key=change_key):
+            selected = st.selectbox(
+                "Novo usuário",
+                names,
+                index=names.index(current),
+                key=f"{key}_novo_usuario",
+            )
+            if selected != current:
+                st.session_state["_operador_sessao"] = selected
+                st.session_state[change_key] = False
+                st.rerun()
+        return _session_operator()
 
-    if selected != current:
+    placeholder = "Selecione o operador"
+    selected = st.selectbox(
+        label,
+        [placeholder] + names,
+        index=0,
+        key=key,
+    )
+    if selected != placeholder:
         st.session_state["_operador_sessao"] = selected
-    return selected
+        return selected
+    return ""
 
 
 def _supabase_anon_key():
@@ -147,7 +152,6 @@ def _supabase_api(action, payload=None, timeout=45):
         "load_material_summary": "entrega_listar_mrp_resumo",
         "load_material_ops": "entrega_listar_mrp_operacoes",
         "list_daily_alerts": "entrega_listar_alertas_diarios_v2",
-        "load_alert_filters": "entrega_alertas_filtros",
         "save_logo": "entrega_salvar_logo",
         "load_nf_summary": "entrega_nf_resumo",
         "load_nf_filters": "entrega_nf_filtros",
@@ -3291,7 +3295,7 @@ elif page == "Cronograma":
 
 elif page == "Materiais":
     # Build 75: a tela nao baixa mais o JSON completo do MRP (~4 MB).
-    # A consulta e filtrada no Supabase e devolve no maximo 500 linhas por grupo.
+    # A consulta e filtrada no Supabase e devolve no maximo 80 linhas por grupo.
     tab_list = st.container()
 
     mrp_success = st.session_state.pop("_mrp_success", None)
