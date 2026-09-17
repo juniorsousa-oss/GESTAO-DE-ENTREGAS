@@ -1383,6 +1383,7 @@ MRP_CONTEXT_COLS = [
 ]
 MATERIAL_HIDDEN_VIEW_COLS = [
     "Contexto Parte 1", "Contexto Parte 2", "Status Projeto", "Situação Separação",
+    "Status separação",
 ]
 SPECIAL_PROJECT_STATUSES = {"SUSPENSO", "CANCELADO", "RESÍDUO"}
 NF_REQUIRED_COLS = [
@@ -2447,7 +2448,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 68
+            <b>Build</b><br>APP core build 69
         </div>''',
         unsafe_allow_html=True,
     )
@@ -4391,4 +4392,4 @@ if globals().get("page") == "Histórico":
     with history_tab_feed:
         _render_feeding_center()
 
-st.sidebar.caption("UI build 26")
+st.sidebar.caption("UI build 27")
