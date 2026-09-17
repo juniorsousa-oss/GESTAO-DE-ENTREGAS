@@ -1,0 +1,54 @@
+name: Build 71 - material history and metrics
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build71_material_history_and_metrics.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Build 71
+        run: python scripts/build71_material_history_and_metrics.py
+      - name: Validate Python
+        run: python -m py_compile streamlit_app.py
+      - name: Validate Build 71 changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('streamlit_app.py').read_text(encoding='utf-8')
+          checks = [
+              'mat_m1.metric("Total de linhas", len(view))',
+              'mat_m2.metric("Pendências", len(pendentes_view))',
+              'mat_m3.metric("Separados", len(separados_view))',
+              'mat_m4.metric("Com problema", len(problemas_view))',
+              '"Movimentações de materiais"',
+              '"material_history"',
+              'Exportar histórico filtrado em Excel',
+              'APP core build 71',
+          ]
+          missing = [item for item in checks if item not in text]
+          assert not missing, f'Missing checks: {missing}'
+          print('Build 71 validation OK')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "juniorsousa-oss"
+          git config user.email "juniorsousa@unipam.edu.br"
+          git add streamlit_app.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Build 71: persist material history and add material metrics"
+          git push
