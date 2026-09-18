@@ -427,7 +427,7 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
-APP_BUILD = 86
+APP_BUILD = 87
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -2937,7 +2937,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 86
+            <b>Build</b><br>APP core build 87
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3900,7 +3900,7 @@ elif page == "Materiais":
             condicoes_existentes = {
                 str(v).strip().upper() for v in (consulta.get("condicoes") or []) if str(v).strip()
             }
-            pendencia_options = ["Todos"] + [x for x in ["SIM", "NÃO"] if x in condicoes_existentes]
+            pendencia_options = ["Todos"] + [x for x in ["SIM", "NÃO", "PENDÊNCIA SEM ESTOQUE"] if x in condicoes_existentes]
             projeto_options = ["Todos"] + [str(v) for v in (consulta.get("projetos") or []) if str(v).strip()]
             prioridade_options = ["Todos"]
             if bool(consulta.get("tem_prioridade")):
