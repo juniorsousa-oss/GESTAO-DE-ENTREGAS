@@ -427,7 +427,55 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
-APP_BUILD = 88
+
+def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None):
+    ops_set = {str(op).strip() for op in (ops or []) if str(op).strip()}
+    if not ops_set:
+        return
+
+    responsavel = str(responsavel or _session_operator() or "Operador").strip() or "Operador"
+    update_date = today()
+
+    for key in ("schedule", "_entrega_supabase_current_full"):
+        frame = st.session_state.get(key)
+        if not isinstance(frame, pd.DataFrame) or frame.empty or "op" not in frame.columns:
+            continue
+        frame = frame.copy()
+        mask = frame["op"].astype(str).isin(ops_set)
+        if status is not None and "status" in frame.columns:
+            frame.loc[mask, "status"] = status
+        if "responsavel_separacao" in frame.columns:
+            frame.loc[mask, "responsavel_separacao"] = responsavel
+        if "ultima_alteracao_equipe" in frame.columns:
+            frame.loc[mask, "ultima_alteracao_equipe"] = update_date
+        if comentario is not None and str(comentario).strip() and "ultimo_comentario" in frame.columns:
+            frame.loc[mask, "ultimo_comentario"] = str(comentario).strip()
+        st.session_state[key] = frame
+
+    states = st.session_state.get("ops_state")
+    if isinstance(states, dict):
+        states = dict(states)
+        for op in ops_set:
+            state = dict(states.get(op) or default_state())
+            if status is not None:
+                state["status"] = status
+            if comentario is not None and str(comentario).strip():
+                state["ultimo_comentario"] = str(comentario).strip()
+            states[op] = state
+        st.session_state["ops_state"] = states
+
+    if comentario is not None and str(comentario).strip() and len(ops_set) == 1:
+        op = next(iter(ops_set))
+        comments = st.session_state.get("comments")
+        if isinstance(comments, list):
+            comments.append({
+                "data_hora": now().strftime("%d/%m/%Y %H:%M:%S"),
+                "op": op,
+                "responsavel": responsavel,
+                "comentario": str(comentario).strip(),
+            })
+
+APP_BUILD = 89
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -2937,7 +2985,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 88
+            <b>Build</b><br>APP core build 89
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3214,6 +3262,9 @@ elif page == "Cronograma":
     tab_current, tab_pcp = st.tabs(["Cronograma atual", "Tratativa PCP"])
 
     with tab_current:
+        cronograma_action_success = st.session_state.pop("_cronograma_action_success", None)
+        if cronograma_action_success:
+            st.success(cronograma_action_success)
         schedule = st.session_state.schedule.copy()
         total_item_map = total_items_by_op()
         pending_balance_map = pending_items_by_op()
@@ -3225,22 +3276,8 @@ elif page == "Cronograma":
         if schedule.empty:
             st.info("Nenhuma OP com Data de Separação carregada.")
         else:
-            operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])].copy()
-
-            actual_statuses = set(operational_schedule["status"].dropna().astype(str).tolist())
-            status_options = [x for x in CRONOGRAMA_STATUS if x in actual_statuses]
-            status_options += sorted(actual_statuses - set(status_options))
-
-            date_options = (
-                pd.to_datetime(operational_schedule["data_separacao"], errors="coerce")
-                .dropna().dt.date.drop_duplicates().sort_values().tolist()
-            )
-            priority_values = operational_schedule["prioridade_solicitada"].fillna(False).astype(bool)
-            priority_options = ["Todos"]
-            if bool(priority_values.any()):
-                priority_options.append(PRIORITY_STATUS)
-            if bool((~priority_values).any()):
-                priority_options.append("Sem prioridade")
+            manual_visible = schedule["status_salvo"].fillna("").astype(str).isin(MANUAL_STATUS) if "status_salvo" in schedule.columns else pd.Series(False, index=schedule.index)
+            operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"]) | manual_visible].copy()
 
             cronograma_base = operational_schedule.copy()
 
@@ -3248,7 +3285,7 @@ elif page == "Cronograma":
                 exclude = set(exclude or [])
                 out = frame.copy()
                 current_search = str(st.session_state.get("cronograma_busca_filtro", "") or "").strip()
-                current_status = st.session_state.get("cronograma_status_filtro") or []
+                current_status = str(st.session_state.get("cronograma_status_filtro_v2", "Todos") or "Todos")
                 current_date = st.session_state.get("cronograma_data_filtro")
                 current_priority = str(st.session_state.get("cronograma_prioridade_filtro", "Todos") or "Todos")
 
@@ -3261,8 +3298,8 @@ elif page == "Cronograma":
                         | out["produto"].astype(str).str.lower().str.contains(term, na=False)
                     )
                     out = out[mask]
-                if "status" not in exclude and current_status:
-                    out = out[out["status"].isin(current_status)]
+                if "status" not in exclude and current_status != "Todos":
+                    out = out[out["status"].fillna("").astype(str).eq(current_status)]
                 if "date" not in exclude and current_date is not None:
                     dates = pd.to_datetime(out["data_separacao"], errors="coerce").dt.date
                     out = out[dates == current_date]
@@ -3278,9 +3315,10 @@ elif page == "Cronograma":
                 date_scope = _cronograma_apply_facets(cronograma_base, {"date"})
                 priority_scope = _cronograma_apply_facets(cronograma_base, {"priority"})
 
-                dynamic_status_options = sorted(
+                dynamic_status_values = sorted(
                     status_scope["status"].dropna().astype(str).loc[lambda s: s.str.strip().ne("")].unique().tolist()
                 )
+                dynamic_status_options = ["Todos"] + dynamic_status_values
                 dynamic_date_options = (
                     pd.to_datetime(date_scope["data_separacao"], errors="coerce")
                     .dropna().dt.date.drop_duplicates().sort_values().tolist()
@@ -3294,17 +3332,10 @@ elif page == "Cronograma":
                         dynamic_priority_options.append("Sem prioridade")
 
                 changed = False
-                selected_statuses = st.session_state.get("cronograma_status_filtro")
-                if selected_statuses is None:
-                    st.session_state["cronograma_status_filtro"] = dynamic_status_options
+                selected_status = str(st.session_state.get("cronograma_status_filtro_v2", "Todos") or "Todos")
+                if selected_status not in dynamic_status_options:
+                    st.session_state["cronograma_status_filtro_v2"] = "Todos"
                     changed = True
-                else:
-                    sanitized = [v for v in selected_statuses if v in dynamic_status_options]
-                    if selected_statuses and not sanitized and dynamic_status_options:
-                        sanitized = dynamic_status_options
-                    if sanitized != list(selected_statuses):
-                        st.session_state["cronograma_status_filtro"] = sanitized
-                        changed = True
                 if st.session_state.get("cronograma_data_filtro") not in ([None] + dynamic_date_options):
                     st.session_state["cronograma_data_filtro"] = None
                     changed = True
@@ -3317,11 +3348,11 @@ elif page == "Cronograma":
             with st.form("cronograma_filtros_form", clear_on_submit=False, enter_to_submit=True):
                 f1, f2, f3, f4 = st.columns([1.55, 1, 1, 1])
                 search = f1.text_input("Buscar OP / cliente / produto", key="cronograma_busca_filtro")
-                status_filter = f2.multiselect(
+                status_filter = f2.selectbox(
                     "Status",
                     dynamic_status_options,
-                    default=st.session_state.get("cronograma_status_filtro") or dynamic_status_options,
-                    key="cronograma_status_filtro",
+                    index=dynamic_status_options.index(st.session_state.get("cronograma_status_filtro_v2", "Todos")),
+                    key="cronograma_status_filtro_v2",
                 )
                 date_filter = f3.selectbox(
                     "Data de Separação",
@@ -3348,7 +3379,7 @@ elif page == "Cronograma":
                     on_click=_clear_filter_group,
                     args=({
                         "cronograma_busca_filtro": "",
-                        "cronograma_status_filtro": [],
+                        "cronograma_status_filtro_v2": "Todos",
                         "cronograma_data_filtro": None,
                         "cronograma_prioridade_filtro": "Todos",
                     }, ("_cronograma_export_bytes",)),
@@ -3438,14 +3469,28 @@ elif page == "Cronograma":
                     key="core_bulk_user",
                 )
 
-                pcol, scol = st.columns([1, 1.35])
-                if pcol.button(
-                    f"Solicitar prioridade ({len(selected_ops)})",
-                    type="primary",
-                    use_container_width=True,
-                    disabled=(priority_blocked > 0 or bool(already_priority.all())),
-                    key="core_bulk_priority",
-                ):
+                with st.form("cronograma_bulk_actions_form", clear_on_submit=False):
+                    pcol, scol = st.columns([1, 1.35])
+                    with pcol:
+                        priority_submit = st.form_submit_button(
+                            f"Solicitar prioridade ({len(selected_ops)})",
+                            type="primary",
+                            use_container_width=True,
+                            disabled=(priority_blocked > 0 or bool(already_priority.all())),
+                        )
+                    standard_status = scol.selectbox(
+                        "Alterar status para",
+                        STANDARD_MANUAL_STATUS,
+                        index=0,
+                        key="core_bulk_status",
+                    )
+                    apply_submit = st.form_submit_button(
+                        f"Aplicar status nas {len(selected_ops)} OPs",
+                        use_container_width=True,
+                        disabled=manual_blocked > 0,
+                    )
+
+                if priority_submit:
                     try:
                         result = _supabase_api(
                             "update_status_bulk",
@@ -3456,26 +3501,20 @@ elif page == "Cronograma":
                             },
                             timeout=45,
                         )
-                        st.session_state["_entrega_supabase_sync"] = False
-                        _sync_current_from_supabase(force=True)
-                        st.success(f"Prioridade solicitada para {int(result.get('atualizadas', 0))} OP(s).")
+                        _update_cronograma_local(
+                            selected_ops,
+                            status=PRIORITY_STATUS,
+                            responsavel=bulk_user or "Operador",
+                        )
+                        st.session_state["_cronograma_action_success"] = (
+                            f"Prioridade solicitada para {int(result.get('atualizadas', 0))} OP(s)."
+                        )
                         st.session_state.pop("cronograma_selecao_editor_core", None)
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Não foi possível solicitar prioridade: {exc}")
 
-                standard_status = scol.selectbox(
-                    "Alterar status para",
-                    STANDARD_MANUAL_STATUS,
-                    index=0,
-                    key="core_bulk_status",
-                )
-                if st.button(
-                    f"Aplicar {standard_status} em {len(selected_ops)} OPs",
-                    use_container_width=True,
-                    disabled=manual_blocked > 0,
-                    key="core_bulk_apply",
-                ):
+                if apply_submit:
                     try:
                         result = _supabase_api(
                             "update_status_bulk",
@@ -3486,9 +3525,14 @@ elif page == "Cronograma":
                             },
                             timeout=45,
                         )
-                        st.session_state["_entrega_supabase_sync"] = False
-                        _sync_current_from_supabase(force=True)
-                        st.success(f"{int(result.get('atualizadas', 0))} OP(s) alterada(s) para {standard_status}.")
+                        _update_cronograma_local(
+                            selected_ops,
+                            status=standard_status,
+                            responsavel=bulk_user or "Operador",
+                        )
+                        st.session_state["_cronograma_action_success"] = (
+                            f"{int(result.get('atualizadas', 0))} OP(s) alterada(s) para {standard_status}."
+                        )
                         st.session_state.pop("cronograma_selecao_editor_core", None)
                         st.rerun()
                     except Exception as exc:
@@ -3548,75 +3592,90 @@ elif page == "Cronograma":
                             },
                             timeout=45,
                         )
-                        st.session_state["_entrega_supabase_sync"] = False
-                        _sync_current_from_supabase(force=True)
-                        st.success("Prioridade solicitada para a OP.")
+                        _update_cronograma_local(
+                            [op_selected],
+                            status=PRIORITY_STATUS,
+                            responsavel=_session_operator() or "Operador",
+                        )
+                        st.session_state["_cronograma_action_success"] = "Prioridade solicitada para a OP."
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Não foi possível solicitar prioridade: {exc}")
 
-                a1, a2 = st.columns(2)
                 can_change_status = manual_status_allowed(project)
-                do_status = a1.checkbox(
-                    "Alterar status",
-                    key=f"chk_status_{op_selected}",
-                    disabled=not can_change_status,
-                )
-                do_comment = a2.checkbox("Adicionar comentário", key=f"chk_comment_{op_selected}")
-                if not can_change_status:
-                    a1.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI SEPARAÇÃO.")
-
                 responsible = _session_operator_input(
                     "Operador responsável",
                     key=f"responsavel_{op_selected}",
                 )
 
-                chosen_status = project["status"] if project["status"] in STANDARD_MANUAL_STATUS else STANDARD_MANUAL_STATUS[0]
-                comment_text = ""
+                default_status = (
+                    project["status"]
+                    if project["status"] in STANDARD_MANUAL_STATUS
+                    else STANDARD_MANUAL_STATUS[0]
+                )
 
-                if do_status:
+                with st.form(f"acoes_projeto_form_{op_selected}", clear_on_submit=False):
+                    a1, a2 = st.columns(2)
+                    do_status = a1.checkbox(
+                        "Alterar status",
+                        key=f"chk_status_{op_selected}",
+                        disabled=not can_change_status,
+                    )
+                    do_comment = a2.checkbox(
+                        "Adicionar comentário",
+                        key=f"chk_comment_{op_selected}",
+                    )
                     chosen_status = st.selectbox(
                         "Novo status",
                         STANDARD_MANUAL_STATUS,
-                        index=STANDARD_MANUAL_STATUS.index(project["status"]) if project["status"] in STANDARD_MANUAL_STATUS else 0,
+                        index=STANDARD_MANUAL_STATUS.index(default_status),
                         key=f"novo_status_{op_selected}",
+                        disabled=not can_change_status,
                     )
-
-                if do_comment:
                     comment_text = st.text_area(
                         "Comentário",
-                        placeholder="Registre a situação, pendência ou informação relevante do projeto.",
+                        placeholder="Opcional. Marque Adicionar comentário para gravar este texto.",
                         height=100,
                         key=f"novo_comentario_{op_selected}",
                     )
+                    save_project_action = st.form_submit_button(
+                        "Salvar ações do projeto",
+                        type="primary",
+                        use_container_width=True,
+                    )
 
-                if do_status or do_comment:
-                    if st.button("Salvar ações do projeto", type="primary", key=f"salvar_acoes_{op_selected}"):
-                        if do_comment and not comment_text.strip():
-                            st.warning("Informe um comentário antes de salvar.")
-                        elif "_supabase_api" not in globals():
-                            st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
-                        else:
-                            try:
-                                _supabase_api(
-                                    "team_action",
-                                    {
-                                        "op": op_selected,
-                                        "status": chosen_status if do_status else None,
-                                        "comentario": comment_text.strip() if do_comment else None,
-                                        "responsavel": responsible or "Operador",
-                                    },
-                                    timeout=45,
-                                )
-                                st.session_state["_entrega_supabase_sync"] = False
-                                if "_sync_current_from_supabase" in globals():
-                                    _sync_current_from_supabase(force=True)
-                                st.success("Ação da equipe de separação registrada.")
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Não foi possível salvar a ação: {exc}")
-                else:
-                    st.info("Marque uma das opções acima para alterar o projeto selecionado.")
+                if not can_change_status:
+                    st.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI SEPARAÇÃO.")
+
+                if save_project_action:
+                    if not do_status and not do_comment:
+                        st.warning("Marque Alterar status e/ou Adicionar comentário antes de salvar.")
+                    elif do_comment and not comment_text.strip():
+                        st.warning("Informe um comentário antes de salvar.")
+                    elif "_supabase_api" not in globals():
+                        st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
+                    else:
+                        try:
+                            _supabase_api(
+                                "team_action",
+                                {
+                                    "op": op_selected,
+                                    "status": chosen_status if do_status else None,
+                                    "comentario": comment_text.strip() if do_comment else None,
+                                    "responsavel": responsible or "Operador",
+                                },
+                                timeout=45,
+                            )
+                            _update_cronograma_local(
+                                [op_selected],
+                                status=chosen_status if do_status else None,
+                                responsavel=responsible or "Operador",
+                                comentario=comment_text.strip() if do_comment else None,
+                            )
+                            st.session_state["_cronograma_action_success"] = "Ação da equipe de separação registrada."
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar a ação: {exc}")
 
                 comments = pd.DataFrame(st.session_state.comments)
                 if not comments.empty:
