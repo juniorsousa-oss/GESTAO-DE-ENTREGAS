@@ -427,7 +427,7 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
-APP_BUILD = 87
+APP_BUILD = 88
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -2937,7 +2937,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 87
+            <b>Build</b><br>APP core build 88
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3886,7 +3886,8 @@ elif page == "Materiais":
         condicao_atual = str(st.session_state.get("materiais_pendencia_filtro", "Todos") or "Todos")
         projeto_atual = str(st.session_state.get("materiais_projeto_filtro", "Todos") or "Todos")
         prioridade_atual = str(st.session_state.get("materiais_prioridade_filtro", "Todos") or "Todos")
-        data_campo_atual = str(st.session_state.get("materiais_data_campo", "Última Solicitação") or "Última Solicitação")
+        data_campo_atual = "Data CM"
+        st.session_state["materiais_data_campo"] = "Data CM"
         data_filtro_atual = st.session_state.get("materiais_data_filtro")
         busca_atual = str(st.session_state.get("materiais_busca_filtro", "") or "")
 
@@ -3958,23 +3959,15 @@ elif page == "Materiais":
                 index=prioridade_options.index(prioridade_atual),
                 key="materiais_prioridade_filtro",
             )
-            f_busca, f_data_campo, f_data = st.columns([1.6, 1, 1])
+            f_busca, f_data = st.columns([2.0, 1.0])
             busca_material = f_busca.text_input(
                 "Pesquisar material",
                 value=busca_atual,
                 key="materiais_busca_filtro",
                 placeholder="Projeto, código ou descrição",
             )
-            data_campo_material = f_data_campo.selectbox(
-                "Referência da data",
-                ["Última Solicitação", "Data CM", "Última Entrada"],
-                index=["Última Solicitação", "Data CM", "Última Entrada"].index(data_campo_atual)
-                    if data_campo_atual in ["Última Solicitação", "Data CM", "Última Entrada"] else 0,
-                key="materiais_data_campo",
-                help="Ao trocar a referência e pesquisar, a lista de datas é atualizada com as datas realmente disponíveis.",
-            )
             data_material = f_data.selectbox(
-                "Data",
+                "Data CM",
                 data_options,
                 index=data_options.index(data_filtro_atual) if data_filtro_atual in data_options else 0,
                 format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
@@ -3995,7 +3988,6 @@ elif page == "Materiais":
                     "materiais_projeto_filtro": "Todos",
                     "materiais_prioridade_filtro": "Todos",
                     "materiais_busca_filtro": "",
-                    "materiais_data_campo": "Última Solicitação",
                     "materiais_data_filtro": None,
                 }, ("_materiais_view_cache", "_material_export_bytes")),
             )
@@ -4252,7 +4244,7 @@ elif page == "Materiais":
                         st.session_state.get("materiais_pendencia_filtro", "Todos"),
                         st.session_state.get("materiais_projeto_filtro", "Todos"),
                         st.session_state.get("materiais_prioridade_filtro", "Todos"),
-                        st.session_state.get("materiais_data_campo", "Última Solicitação"),
+                        "Data CM",
                         st.session_state.get("materiais_data_filtro"),
                         str(st.session_state.get("materiais_busca_filtro", "") or ""),
                         limit=10000,
