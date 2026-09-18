@@ -427,7 +427,7 @@ def _sync_current_from_supabase(force=False):
         return False
 
 
-APP_BUILD = 85
+APP_BUILD = 86
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1365,6 +1365,169 @@ def _markdown_ui(body, *args, **kwargs):
         extra_css += '\n\n          /* Build 52 — seletor visual fixo no canto esquerdo */\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label {\n              position: relative !important;\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              min-height: 46px !important;\n              padding: 0 2.7rem !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child {\n              position: absolute !important;\n              display: none !important;\n              opacity: 0 !important;\n              visibility: hidden !important;\n              width: 0 !important;\n              min-width: 0 !important;\n              height: 0 !important;\n              min-height: 0 !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              border: 0 !important;\n              overflow: hidden !important;\n              pointer-events: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {\n              content: "" !important;\n              display: block !important;\n              position: absolute !important;\n              left: 1rem !important;\n              top: 50% !important;\n              width: 13px !important;\n              height: 13px !important;\n              min-width: 13px !important;\n              min-height: 13px !important;\n              transform: translateY(-50%) !important;\n              box-sizing: border-box !important;\n              border: 1px solid #cbd5e1 !important;\n              border-radius: 999px !important;\n              background: #f8fafc !important;\n              box-shadow: none !important;\n              -webkit-mask-image: none !important;\n              mask-image: none !important;\n              z-index: 5 !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {\n              border-color: #ff454d !important;\n              background: radial-gradient(circle at center, #ffffff 0 24%, #ff454d 27% 100%) !important;\n              box-shadow: 0 0 0 2px rgba(255, 69, 77, .10) !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {\n              content: none !important;\n              display: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {\n              position: static !important;\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              flex: 1 1 100% !important;\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n              pointer-events: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {\n              display: block !important;\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n              line-height: 1 !important;\n          }\n'
 
         extra_css += '\n\n          /* Build 53 — menu sem bolinha/check */\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {\n              content: none !important;\n              display: none !important;\n              width: 0 !important;\n              height: 0 !important;\n              min-width: 0 !important;\n              min-height: 0 !important;\n              border: 0 !important;\n              background: none !important;\n              box-shadow: none !important;\n              -webkit-mask-image: none !important;\n              mask-image: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child:not([data-testid="stMarkdownContainer"]) {\n              position: absolute !important;\n              display: none !important;\n              opacity: 0 !important;\n              visibility: hidden !important;\n              width: 0 !important;\n              height: 0 !important;\n              min-width: 0 !important;\n              min-height: 0 !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              overflow: hidden !important;\n              pointer-events: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label {\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              min-height: 46px !important;\n              padding: 0 1rem !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {\n              position: static !important;\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              flex: 1 1 100% !important;\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {\n              border-left: 5px solid #ef3038 !important;\n              padding-left: 1rem !important;\n              padding-right: 1rem !important;\n          }\n'
+
+
+        extra_css += r"""
+
+          /* Build 86 — navegação igual ao Controle de NFs */
+          div[class*="st-key-main_navigation"] [role="radiogroup"] {
+              display: flex !important;
+              flex-direction: column !important;
+              align-items: flex-start !important;
+              gap: .58rem !important;
+              width: 100% !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] > div,
+          div[class*="st-key-main_navigation"] [role="radiogroup"] > label {
+              width: auto !important;
+              max-width: 100% !important;
+              flex: 0 0 auto !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
+              position: relative !important;
+              width: auto !important;
+              max-width: 100% !important;
+              min-height: 48px !important;
+              display: flex !important;
+              align-items: center !important;
+              justify-content: flex-start !important;
+              padding: .66rem 1rem .66rem 3rem !important;
+              margin: 0 !important;
+              border: 1px solid #e2e8f0 !important;
+              border-radius: 12px !important;
+              background: #ffffff !important;
+              box-shadow: 0 2px 8px rgba(15,23,42,.035) !important;
+              cursor: pointer !important;
+              box-sizing: border-box !important;
+              overflow: visible !important;
+              transition: .12s ease !important;
+              text-align: left !important;
+          }
+
+          /* Esconde o radio nativo e desenha o mesmo marcador visual do app de NFs. */
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child:not([data-testid="stMarkdownContainer"]),
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child {
+              position: absolute !important;
+              display: none !important;
+              opacity: 0 !important;
+              visibility: hidden !important;
+              width: 0 !important;
+              height: 0 !important;
+              min-width: 0 !important;
+              min-height: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: hidden !important;
+              pointer-events: none !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {
+              content: "" !important;
+              display: block !important;
+              position: absolute !important;
+              left: 1rem !important;
+              top: 50% !important;
+              width: 16px !important;
+              height: 16px !important;
+              min-width: 16px !important;
+              min-height: 16px !important;
+              transform: translateY(-50%) !important;
+              box-sizing: border-box !important;
+              border: 1.5px solid #d1d5db !important;
+              border-radius: 999px !important;
+              background: #ffffff !important;
+              box-shadow: none !important;
+              z-index: 5 !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
+              position: static !important;
+              display: flex !important;
+              align-items: center !important;
+              justify-content: flex-start !important;
+              flex: 0 1 auto !important;
+              width: auto !important;
+              min-width: 0 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              text-align: left !important;
+              pointer-events: none !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
+              display: block !important;
+              width: auto !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              color: #334155 !important;
+              font-size: .86rem !important;
+              line-height: 1.2 !important;
+              font-weight: 700 !important;
+              text-align: left !important;
+              text-transform: uppercase !important;
+              letter-spacing: 0 !important;
+              white-space: nowrap !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:hover {
+              transform: translateY(-1px) !important;
+              border-color: #cbd5e1 !important;
+              background: #fbfdff !important;
+              box-shadow: 0 5px 14px rgba(15,23,42,.07) !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
+              min-height: 48px !important;
+              padding: .66rem 1rem .66rem 3rem !important;
+              background: #111827 !important;
+              border: 1px solid #111827 !important;
+              border-left: 1px solid #111827 !important;
+              border-radius: 12px !important;
+              box-shadow: 0 5px 14px rgba(17,24,39,.14) !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {
+              content: "" !important;
+              display: block !important;
+              position: absolute !important;
+              left: .42rem !important;
+              top: 50% !important;
+              width: 4px !important;
+              height: 20px !important;
+              min-width: 4px !important;
+              min-height: 20px !important;
+              border: 0 !important;
+              border-radius: 999px !important;
+              background: #ef4444 !important;
+              box-shadow: none !important;
+              transform: translateY(-50%) !important;
+              z-index: 6 !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::after {
+              border-color: #0b1220 !important;
+              background: radial-gradient(circle at center, #ffffff 0 24%, #0b1220 28% 100%) !important;
+          }
+
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) [data-testid="stMarkdownContainer"] p,
+          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
+              color: #ffffff !important;
+              font-weight: 800 !important;
+          }
+
+          @media (max-width: 900px) {
+              div[class*="st-key-main_navigation"] [role="radiogroup"] {
+                  gap: .58rem !important;
+              }
+              div[class*="st-key-main_navigation"] [role="radiogroup"] label {
+                  min-height: 48px !important;
+              }
+          }
+"""
 
         body = body.replace('</style>', extra_css + '\n</style>')
 
@@ -2774,7 +2937,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 85
+            <b>Build</b><br>APP core build 86
         </div>''',
         unsafe_allow_html=True,
     )
