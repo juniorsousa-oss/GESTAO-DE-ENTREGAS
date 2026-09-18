@@ -1,0 +1,36 @@
+name: Cronograma performance build 89
+
+on:
+  push:
+    paths:
+      - 'patch_cronograma_perf_build89.py'
+      - '.github/workflows/cronograma_perf_build89.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        run: python patch_cronograma_perf_build89.py
+      - name: Compile
+        run: python -m py_compile streamlit_app.py
+      - name: Verify
+        run: |
+          grep -q 'APP_BUILD = 89' streamlit_app.py
+          grep -q 'acoes_projeto_form_' streamlit_app.py
+          grep -q 'cronograma_status_filtro_v2' streamlit_app.py
+          grep -q '_update_cronograma_local' streamlit_app.py
+      - name: Commit app
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add streamlit_app.py
+          git commit -m 'Build 89: stop unnecessary cronograma reruns'
+          git push
