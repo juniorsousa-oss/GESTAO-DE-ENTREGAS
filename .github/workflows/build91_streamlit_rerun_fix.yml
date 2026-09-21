@@ -1,0 +1,56 @@
+name: Build 91 Streamlit rerun performance fix
+on:
+  push:
+    paths:
+      - '.github/workflows/build91_streamlit_rerun_fix.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply fix
+        run: python scripts/build91_streamlit_rerun_fix.py
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+      - name: Compile and verify repeated interactions
+        run: |
+          python -m py_compile streamlit_app.py
+          python - <<'PY'
+          import streamlit as st
+          from streamlit.delta_generator import DeltaGenerator
+          from streamlit.testing.v1 import AppTest
+
+          app = AppTest.from_file("streamlit_app.py", default_timeout=45)
+          for i in range(8):
+              app.run()
+              assert not app.exception, [e.message for e in app.exception]
+              for label, value, target, previous in [
+                  ("markdown", st.markdown, "_markdown_ui", "_original_markdown"),
+                  ("metric", DeltaGenerator.metric, "_metric_ui", "_original_metric"),
+                  ("radio", DeltaGenerator.radio, "_radio_ui", "_original_radio"),
+                  ("dataframe", DeltaGenerator.dataframe, "_dataframe_ui", "_original_dataframe"),
+                  ("multiselect", DeltaGenerator.multiselect, "_multiselect_ui", "_original_multiselect"),
+              ]:
+                  depth = 0
+                  seen = set()
+                  while callable(value) and getattr(value, "__name__", "") == target:
+                      assert id(value) not in seen, (label, "cycle")
+                      seen.add(id(value))
+                      depth += 1
+                      value = value.__globals__[previous]
+                  assert depth <= 1, (i, label, depth)
+              print("RERUN_OK", i+1)
+          print("BUILD_91_RERUN_TEST_OK")
+          PY
+      - name: Commit build 91
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add streamlit_app.py
+          git commit -m "Build 91: prevent cumulative Streamlit wrappers" || exit 0
+          git push
