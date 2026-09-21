@@ -30,8 +30,8 @@ repl=[
 ("_original_multiselect = DeltaGenerator.multiselect",'_original_multiselect = _setta_native_callable(DeltaGenerator.multiselect, "_multiselect_ui", "_original_multiselect")',"multiselect"),
 ("_original_radio = DeltaGenerator.radio",'_original_radio = _setta_native_callable(DeltaGenerator.radio, "_radio_ui", "_original_radio")',"radio"),
 ("_original_dataframe = DeltaGenerator.dataframe",'_original_dataframe = _setta_native_callable(DeltaGenerator.dataframe, "_dataframe_ui", "_original_dataframe")',"dataframe"),
-("APP_BUILD = 89","APP_BUILD = 90","build"),
-("APP core build 89","APP core build 90","sidebar build"),
+("APP_BUILD = 90","APP_BUILD = 91","build"),
+("APP core build 90","APP core build 91","sidebar build"),
 ]
 for old,new,label in repl:
     if s.count(old)!=1:
@@ -39,4 +39,4 @@ for old,new,label in repl:
     s=s.replace(old,new,1)
     print(label,"ok")
 path.write_text(s,encoding="utf-8")
-print("BUILD_90_PATCH_OK")
+print("BUILD_91_PATCH_OK")
