@@ -35,3 +35,12 @@ jobs:
           assert len(t.exception)==0, 'Streamlit app failed during startup'
           print('APPTEST_STARTUP_OK')
           PY
+      - name: Probe deployed Streamlit app
+        run: |
+          TARGET='https://gestao-de-entregas-jg7uy8vv5wtrfzfml9ptpl.streamlit.app'
+          echo "PROBE_DEPLOYED_URL=$TARGET"
+          for endpoint in '/' '/_stcore/health'; do
+            printf 'PROBE_PATH=%s ' "$endpoint"
+            curl --max-time 35 -sSL -o /tmp/probe_body -w 'HTTP_CODE=%{http_code} TOTAL_SECONDS=%{time_total} FINAL_URL=%{url_effective}\n' "$TARGET$endpoint" || true
+            echo "BODY_HEAD=$(head -c 180 /tmp/probe_body | tr '\n' ' ')" 
+          done
