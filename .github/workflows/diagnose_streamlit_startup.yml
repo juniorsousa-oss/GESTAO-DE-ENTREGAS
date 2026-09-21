@@ -35,12 +35,61 @@ jobs:
           assert len(t.exception)==0, 'Streamlit app failed during startup'
           print('APPTEST_STARTUP_OK')
           PY
-      - name: Probe deployed Streamlit app
+      - name: Render all screens with simulated Supabase data
         run: |
-          TARGET='https://gestao-de-entregas-jg7uy8vv5wtrfzfml9ptpl.streamlit.app'
-          echo "PROBE_DEPLOYED_URL=$TARGET"
-          for endpoint in '/' '/_stcore/health'; do
-            printf 'PROBE_PATH=%s ' "$endpoint"
-            curl --max-time 35 -sSL -o /tmp/probe_body -w 'HTTP_CODE=%{http_code} TOTAL_SECONDS=%{time_total} FINAL_URL=%{url_effective}\n' "$TARGET$endpoint" || true
-            echo "BODY_HEAD=$(head -c 180 /tmp/probe_body | tr '\n' ' ')" 
-          done
+          python - <<'PY'
+          import os
+          from unittest.mock import patch
+          import requests
+          from streamlit.testing.v1 import AppTest
+          os.environ['SUPABASE_ANON_KEY']='TEST_ONLY'
+          sample={
+              'cronograma':[{
+                  'op':'26000101001','psy':'260001','cliente':'CLIENTE TESTE',
+                  'produto':'PRODUTO TESTE','data_separacao':'2026-09-25',
+                  'status':'Pendente','alerta_ativo':False,
+                  'tipo_alerta':None,'tratativa_pcp':None,'ultimo_comentario':None,
+                  'ultima_alteracao_cronograma':None,'ultima_alteracao_equipe':None,
+                  'qtd_alteracoes':0,'alerta_status_especial':False,
+                  'tipo_status_especial':None,'atencao_ativo':False,
+                  'tipo_atencao':None,'comentario_tratativa_pcp':None,
+                  'responsavel_separacao':None
+              }],
+              'mrp_resumo':[{
+                  'projeto':'26000101001','qtd_itens_pendentes':5,
+                  'pendencias_com_saldo':2,'qtd_itens_mrp':5,
+                  'status_projeto':'NORMAL','situacao_entrega':'NÃO POSSUI SEPARAÇÃO',
+                  'possui_entrega':False,'atualizado_em':'2026-09-21T10:00:00Z',
+                  'contexto_raw':None,'contexto_parte1':None,'contexto_parte2':None
+              }],
+              'app_config':{'button_color':'#111111'}
+          }
+          class Resp:
+              ok=True
+              status_code=200
+              text='{}'
+              def __init__(self,p):self.p=p
+              def json(self):return self.p
+          seen=[]
+          def fake_post(url,**kwargs):
+              action=url.rsplit('/',1)[-1]
+              seen.append(action)
+              if action=='entrega_bootstrap_v2':return Resp(sample)
+              if action=='entrega_materiais_consulta':
+                  return Resp({'total_count':0,'condicoes':[],'projetos':[],
+                               'datas_disponiveis':[],'pendentes':[],
+                               'separados':[],'problemas':[]})
+              if action=='entrega_cargas_resumo':return Resp({})
+              return Resp([])
+          with patch.object(requests,'post',side_effect=fake_post):
+              t=AppTest.from_file('streamlit_app.py',default_timeout=60).run()
+              print('SCREEN_Dashboard_EXCEPTIONS', [e.message for e in t.exception])
+              print('SCREEN_Dashboard_ERRORS', [e.message for e in t.error])
+              assert not t.exception
+              for page in ('Cronograma','Materiais','NFs','Histórico'):
+                  t.sidebar.radio[0].set_value(page).run()
+                  print('SCREEN_'+page+'_EXCEPTIONS',[e.message for e in t.exception])
+                  print('SCREEN_'+page+'_ERRORS',[e.message for e in t.error])
+                  assert not t.exception, page+' raised an exception'
+          print('MOCKED_SUPABASE_SCREENS_OK',seen)
+          PY
