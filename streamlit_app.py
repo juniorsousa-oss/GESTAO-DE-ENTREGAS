@@ -475,7 +475,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 89
+APP_BUILD = 90
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -2759,6 +2759,19 @@ if not re.fullmatch(r"#[0-9A-F]{6}", button_color):
     button_color = "#111111"
 
 
+def _lazy_tabs(labels, key):
+    """Executa apenas a aba visível em versões do Streamlit com suporte a on_change."""
+    try:
+        return st.tabs(labels, key=key, on_change="rerun")
+    except TypeError:
+        # Compatibilidade se a hospedagem ainda usar Streamlit anterior à versão 1.55.
+        return st.tabs(labels)
+
+
+def _tab_visible(tab):
+    return getattr(tab, "open", None) is not False
+
+
 def _clear_filter_group(values, extra_keys=()):
     for key, value in dict(values or {}).items():
         st.session_state[key] = value
@@ -2985,7 +2998,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 89
+            <b>Build</b><br>APP core build 90
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3259,600 +3272,602 @@ if page == "Dashboard":
 
 
 elif page == "Cronograma":
-    tab_current, tab_pcp = st.tabs(["Cronograma atual", "Tratativa PCP"])
+    tab_current, tab_pcp = _lazy_tabs(["Cronograma atual", "Tratativa PCP"], "cronograma_tabs")
 
     with tab_current:
-        cronograma_action_success = st.session_state.pop("_cronograma_action_success", None)
-        if cronograma_action_success:
-            st.success(cronograma_action_success)
-        schedule = st.session_state.schedule.copy()
-        total_item_map = total_items_by_op()
-        pending_balance_map = pending_items_by_op()
-        if not schedule.empty:
-            schedule = apply_operational_statuses(schedule, total_item_map)
-            schedule["pendencias_com_saldo"] = (
-                schedule["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
-            )
-        if schedule.empty:
-            st.info("Nenhuma OP com Data de Separação carregada.")
-        else:
-            manual_visible = schedule["status_salvo"].fillna("").astype(str).isin(MANUAL_STATUS) if "status_salvo" in schedule.columns else pd.Series(False, index=schedule.index)
-            operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"]) | manual_visible].copy()
-
-            cronograma_base = operational_schedule.copy()
-
-            def _cronograma_apply_facets(frame, exclude=None):
-                exclude = set(exclude or [])
-                out = frame.copy()
-                current_search = str(st.session_state.get("cronograma_busca_filtro", "") or "").strip()
-                current_status = str(st.session_state.get("cronograma_status_filtro_v2", "Todos") or "Todos")
-                current_date = st.session_state.get("cronograma_data_filtro")
-                current_priority = str(st.session_state.get("cronograma_prioridade_filtro", "Todos") or "Todos")
-
-                if "search" not in exclude and current_search:
-                    term = current_search.lower()
-                    mask = (
-                        out["op"].astype(str).str.lower().str.contains(term, na=False)
-                        | out["psy"].astype(str).str.lower().str.contains(term, na=False)
-                        | out["cliente"].astype(str).str.lower().str.contains(term, na=False)
-                        | out["produto"].astype(str).str.lower().str.contains(term, na=False)
-                    )
-                    out = out[mask]
-                if "status" not in exclude and current_status != "Todos":
-                    out = out[out["status"].fillna("").astype(str).eq(current_status)]
-                if "date" not in exclude and current_date is not None:
-                    dates = pd.to_datetime(out["data_separacao"], errors="coerce").dt.date
-                    out = out[dates == current_date]
-                if "priority" not in exclude:
-                    if current_priority == PRIORITY_STATUS:
-                        out = out[out["prioridade_solicitada"].fillna(False).astype(bool)]
-                    elif current_priority == "Sem prioridade":
-                        out = out[~out["prioridade_solicitada"].fillna(False).astype(bool)]
-                return out
-
-            for _ in range(3):
-                status_scope = _cronograma_apply_facets(cronograma_base, {"status"})
-                date_scope = _cronograma_apply_facets(cronograma_base, {"date"})
-                priority_scope = _cronograma_apply_facets(cronograma_base, {"priority"})
-
-                dynamic_status_values = sorted(
-                    status_scope["status"].dropna().astype(str).loc[lambda s: s.str.strip().ne("")].unique().tolist()
+        if _tab_visible(tab_current):
+            cronograma_action_success = st.session_state.pop("_cronograma_action_success", None)
+            if cronograma_action_success:
+                st.success(cronograma_action_success)
+            schedule = st.session_state.schedule.copy()
+            total_item_map = total_items_by_op()
+            pending_balance_map = pending_items_by_op()
+            if not schedule.empty:
+                schedule = apply_operational_statuses(schedule, total_item_map)
+                schedule["pendencias_com_saldo"] = (
+                    schedule["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
                 )
-                dynamic_status_options = ["Todos"] + dynamic_status_values
-                dynamic_date_options = (
-                    pd.to_datetime(date_scope["data_separacao"], errors="coerce")
-                    .dropna().dt.date.drop_duplicates().sort_values().tolist()
-                )
-                dynamic_priority_options = ["Todos"]
-                if not priority_scope.empty:
-                    pvals = priority_scope["prioridade_solicitada"].fillna(False).astype(bool)
-                    if bool(pvals.any()):
-                        dynamic_priority_options.append(PRIORITY_STATUS)
-                    if bool((~pvals).any()):
-                        dynamic_priority_options.append("Sem prioridade")
+            if schedule.empty:
+                st.info("Nenhuma OP com Data de Separação carregada.")
+            else:
+                manual_visible = schedule["status_salvo"].fillna("").astype(str).isin(MANUAL_STATUS) if "status_salvo" in schedule.columns else pd.Series(False, index=schedule.index)
+                operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"]) | manual_visible].copy()
 
-                changed = False
-                selected_status = str(st.session_state.get("cronograma_status_filtro_v2", "Todos") or "Todos")
-                if selected_status not in dynamic_status_options:
-                    st.session_state["cronograma_status_filtro_v2"] = "Todos"
-                    changed = True
-                if st.session_state.get("cronograma_data_filtro") not in ([None] + dynamic_date_options):
-                    st.session_state["cronograma_data_filtro"] = None
-                    changed = True
-                if st.session_state.get("cronograma_prioridade_filtro", "Todos") not in dynamic_priority_options:
-                    st.session_state["cronograma_prioridade_filtro"] = "Todos"
-                    changed = True
-                if not changed:
-                    break
+                cronograma_base = operational_schedule.copy()
 
-            with st.form("cronograma_filtros_form", clear_on_submit=False, enter_to_submit=True):
-                f1, f2, f3, f4 = st.columns([1.55, 1, 1, 1])
-                search = f1.text_input("Buscar OP / cliente / produto", key="cronograma_busca_filtro")
-                status_filter = f2.selectbox(
-                    "Status",
-                    dynamic_status_options,
-                    index=dynamic_status_options.index(st.session_state.get("cronograma_status_filtro_v2", "Todos")),
-                    key="cronograma_status_filtro_v2",
-                )
-                date_filter = f3.selectbox(
-                    "Data de Separação",
-                    [None] + dynamic_date_options,
-                    index=([None] + dynamic_date_options).index(st.session_state.get("cronograma_data_filtro")),
-                    format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
-                    key="cronograma_data_filtro",
-                )
-                priority_filter = f4.selectbox(
-                    "Prioridade",
-                    dynamic_priority_options,
-                    index=dynamic_priority_options.index(st.session_state.get("cronograma_prioridade_filtro", "Todos")),
-                    key="cronograma_prioridade_filtro",
-                )
-                search_col, clear_col = st.columns([14, 1])
-                cronograma_filter_submit = search_col.form_submit_button(
-                    "Pesquisar", type="primary", use_container_width=True
-                )
-                clear_col.form_submit_button(
-                    "Limpar",
-                    key="filter_clear_group__cronograma",
-                    help="Limpar todos os filtros desta aba",
-                    use_container_width=True,
-                    on_click=_clear_filter_group,
-                    args=({
-                        "cronograma_busca_filtro": "",
-                        "cronograma_status_filtro_v2": "Todos",
-                        "cronograma_data_filtro": None,
-                        "cronograma_prioridade_filtro": "Todos",
-                    }, ("_cronograma_export_bytes",)),
-                )
-            st.caption("Filtros independentes: cada opção é recalculada usando os demais filtros ativos, sem ordem obrigatória.")
-            if cronograma_filter_submit:
-                st.session_state.pop("_cronograma_export_bytes", None)
+                def _cronograma_apply_facets(frame, exclude=None):
+                    exclude = set(exclude or [])
+                    out = frame.copy()
+                    current_search = str(st.session_state.get("cronograma_busca_filtro", "") or "").strip()
+                    current_status = str(st.session_state.get("cronograma_status_filtro_v2", "Todos") or "Todos")
+                    current_date = st.session_state.get("cronograma_data_filtro")
+                    current_priority = str(st.session_state.get("cronograma_prioridade_filtro", "Todos") or "Todos")
 
-            view = _cronograma_apply_facets(cronograma_base)
-
-            view = view.assign(_priority_sort=view["prioridade_solicitada"].fillna(False).astype(bool))
-            view = view.sort_values(["_priority_sort", "data_separacao", "op"], ascending=[False, True, True]).drop(columns=["_priority_sort"]).reset_index(drop=True)
-            cronograma_export_view = view.copy()
-            total_cronograma_filtrado = len(view)
-            view = view.head(80).reset_index(drop=True)
-
-            st.caption("Marque uma ou mais OPs na coluna Selecionar. Uma OP abre as ações individuais; duas ou mais habilitam a ação em lote.")
-            if total_cronograma_filtrado > 80:
-                st.caption(f"Exibindo 80 de {total_cronograma_filtrado} projetos. Use a busca e os filtros para localizar os demais.")
-
-            editor_columns = [
-                c for c in [
-                    "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
-                        "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
-                    "motivo_alerta", "tratativa_pcp", "responsavel_separacao", "ultimo_comentario"
-                ] if c in view.columns
-            ]
-            editor_view = view[editor_columns].copy().reset_index(drop=True)
-            editor_view.insert(0, "Selecionar", False)
-
-            with st.form("cronograma_selecao_form", clear_on_submit=False, enter_to_submit=True):
-                edited_view = st.data_editor(
-                    editor_view,
-                    use_container_width=True,
-                    hide_index=True,
-                    key="cronograma_selecao_editor_core",
-                    disabled=[c for c in editor_view.columns if c != "Selecionar"],
-                    column_config={
-                        "Selecionar": st.column_config.CheckboxColumn(
-                            "Selecionar",
-                            help="Marque quantas OPs desejar e depois pressione Enter ou Pesquisar.",
-                            default=False,
-                        ),
-                        "op": "OP",
-                        "psy": "PSY",
-                        "cliente": "Cliente",
-                        "produto": "Produto",
-                        "qtd_itens_pendentes": st.column_config.NumberColumn("Quantidade de itens pendentes", format="%d"),
-                        "pendencias_com_saldo": st.column_config.NumberColumn("Pendências com saldo", format="%d"),
-                        "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
-                        "status": "Status",
-                        "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
-                        "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
-                        "sinalizacao": "Sinalização",
-                        "status_projeto_mrp": "Status MRP",
-                        "situacao_entrega": "Situação separação",
-                        "motivo_alerta": "Motivo / atenção",
-                        "tratativa_pcp": "Tratativa PCP",
-                        "responsavel_separacao": "Responsável separação",
-                        "ultimo_comentario": "Último comentário",
-                    },
-                )
-                st.form_submit_button(
-                    "Pesquisar",
-                    type="primary",
-                    use_container_width=True,
-                )
-            st.caption("Os checkboxes são acumulados sem recarregar a tela; pressione Enter ou Pesquisar quando terminar.")
-
-            selected_rows = edited_view.index[
-                edited_view["Selecionar"].fillna(False).astype(bool)
-            ].tolist()
-
-            if len(selected_rows) > 1:
-                selected_projects = view.iloc[selected_rows].copy()
-                selected_ops = selected_projects["op"].astype(str).drop_duplicates().tolist()
-                manual_eligibility = selected_projects.apply(manual_status_allowed, axis=1)
-                priority_eligibility = selected_projects.apply(priority_allowed, axis=1)
-                already_priority = selected_projects["prioridade_solicitada"].fillna(False).astype(bool)
-                manual_blocked = int((~manual_eligibility).sum())
-                priority_blocked = int((~priority_eligibility).sum())
-
-                st.markdown("#### Ação em lote")
-                st.info(f"{len(selected_ops)} OPs selecionadas.")
-                bulk_user = _session_operator_input(
-                    "Operador responsável",
-                    key="core_bulk_user",
-                )
-
-                with st.form("cronograma_bulk_actions_form", clear_on_submit=False):
-                    pcol, scol = st.columns([1, 1.35])
-                    with pcol:
-                        priority_submit = st.form_submit_button(
-                            f"Solicitar prioridade ({len(selected_ops)})",
-                            type="primary",
-                            use_container_width=True,
-                            disabled=(priority_blocked > 0 or bool(already_priority.all())),
+                    if "search" not in exclude and current_search:
+                        term = current_search.lower()
+                        mask = (
+                            out["op"].astype(str).str.lower().str.contains(term, na=False)
+                            | out["psy"].astype(str).str.lower().str.contains(term, na=False)
+                            | out["cliente"].astype(str).str.lower().str.contains(term, na=False)
+                            | out["produto"].astype(str).str.lower().str.contains(term, na=False)
                         )
-                    standard_status = scol.selectbox(
-                        "Alterar status para",
-                        STANDARD_MANUAL_STATUS,
-                        index=0,
-                        key="core_bulk_status",
+                        out = out[mask]
+                    if "status" not in exclude and current_status != "Todos":
+                        out = out[out["status"].fillna("").astype(str).eq(current_status)]
+                    if "date" not in exclude and current_date is not None:
+                        dates = pd.to_datetime(out["data_separacao"], errors="coerce").dt.date
+                        out = out[dates == current_date]
+                    if "priority" not in exclude:
+                        if current_priority == PRIORITY_STATUS:
+                            out = out[out["prioridade_solicitada"].fillna(False).astype(bool)]
+                        elif current_priority == "Sem prioridade":
+                            out = out[~out["prioridade_solicitada"].fillna(False).astype(bool)]
+                    return out
+
+                for _ in range(3):
+                    status_scope = _cronograma_apply_facets(cronograma_base, {"status"})
+                    date_scope = _cronograma_apply_facets(cronograma_base, {"date"})
+                    priority_scope = _cronograma_apply_facets(cronograma_base, {"priority"})
+
+                    dynamic_status_values = sorted(
+                        status_scope["status"].dropna().astype(str).loc[lambda s: s.str.strip().ne("")].unique().tolist()
                     )
-                    apply_submit = st.form_submit_button(
-                        f"Aplicar status nas {len(selected_ops)} OPs",
+                    dynamic_status_options = ["Todos"] + dynamic_status_values
+                    dynamic_date_options = (
+                        pd.to_datetime(date_scope["data_separacao"], errors="coerce")
+                        .dropna().dt.date.drop_duplicates().sort_values().tolist()
+                    )
+                    dynamic_priority_options = ["Todos"]
+                    if not priority_scope.empty:
+                        pvals = priority_scope["prioridade_solicitada"].fillna(False).astype(bool)
+                        if bool(pvals.any()):
+                            dynamic_priority_options.append(PRIORITY_STATUS)
+                        if bool((~pvals).any()):
+                            dynamic_priority_options.append("Sem prioridade")
+
+                    changed = False
+                    selected_status = str(st.session_state.get("cronograma_status_filtro_v2", "Todos") or "Todos")
+                    if selected_status not in dynamic_status_options:
+                        st.session_state["cronograma_status_filtro_v2"] = "Todos"
+                        changed = True
+                    if st.session_state.get("cronograma_data_filtro") not in ([None] + dynamic_date_options):
+                        st.session_state["cronograma_data_filtro"] = None
+                        changed = True
+                    if st.session_state.get("cronograma_prioridade_filtro", "Todos") not in dynamic_priority_options:
+                        st.session_state["cronograma_prioridade_filtro"] = "Todos"
+                        changed = True
+                    if not changed:
+                        break
+
+                with st.form("cronograma_filtros_form", clear_on_submit=False, enter_to_submit=True):
+                    f1, f2, f3, f4 = st.columns([1.55, 1, 1, 1])
+                    search = f1.text_input("Buscar OP / cliente / produto", key="cronograma_busca_filtro")
+                    status_filter = f2.selectbox(
+                        "Status",
+                        dynamic_status_options,
+                        index=dynamic_status_options.index(st.session_state.get("cronograma_status_filtro_v2", "Todos")),
+                        key="cronograma_status_filtro_v2",
+                    )
+                    date_filter = f3.selectbox(
+                        "Data de Separação",
+                        [None] + dynamic_date_options,
+                        index=([None] + dynamic_date_options).index(st.session_state.get("cronograma_data_filtro")),
+                        format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
+                        key="cronograma_data_filtro",
+                    )
+                    priority_filter = f4.selectbox(
+                        "Prioridade",
+                        dynamic_priority_options,
+                        index=dynamic_priority_options.index(st.session_state.get("cronograma_prioridade_filtro", "Todos")),
+                        key="cronograma_prioridade_filtro",
+                    )
+                    search_col, clear_col = st.columns([14, 1])
+                    cronograma_filter_submit = search_col.form_submit_button(
+                        "Pesquisar", type="primary", use_container_width=True
+                    )
+                    clear_col.form_submit_button(
+                        "Limpar",
+                        key="filter_clear_group__cronograma",
+                        help="Limpar todos os filtros desta aba",
                         use_container_width=True,
-                        disabled=manual_blocked > 0,
+                        on_click=_clear_filter_group,
+                        args=({
+                            "cronograma_busca_filtro": "",
+                            "cronograma_status_filtro_v2": "Todos",
+                            "cronograma_data_filtro": None,
+                            "cronograma_prioridade_filtro": "Todos",
+                        }, ("_cronograma_export_bytes",)),
                     )
+                st.caption("Filtros independentes: cada opção é recalculada usando os demais filtros ativos, sem ordem obrigatória.")
+                if cronograma_filter_submit:
+                    st.session_state.pop("_cronograma_export_bytes", None)
 
-                if priority_submit:
-                    try:
-                        result = _supabase_api(
-                            "update_status_bulk",
-                            {
-                                "ops": selected_ops,
-                                "status": PRIORITY_STATUS,
-                                "responsavel": bulk_user or "Operador",
-                            },
-                            timeout=45,
-                        )
-                        _update_cronograma_local(
-                            selected_ops,
-                            status=PRIORITY_STATUS,
-                            responsavel=bulk_user or "Operador",
-                        )
-                        st.session_state["_cronograma_action_success"] = (
-                            f"Prioridade solicitada para {int(result.get('atualizadas', 0))} OP(s)."
-                        )
-                        st.session_state.pop("cronograma_selecao_editor_core", None)
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível solicitar prioridade: {exc}")
+                view = _cronograma_apply_facets(cronograma_base)
 
-                if apply_submit:
-                    try:
-                        result = _supabase_api(
-                            "update_status_bulk",
-                            {
-                                "ops": selected_ops,
-                                "status": standard_status,
-                                "responsavel": bulk_user or "Operador",
-                            },
-                            timeout=45,
-                        )
-                        _update_cronograma_local(
-                            selected_ops,
-                            status=standard_status,
-                            responsavel=bulk_user or "Operador",
-                        )
-                        st.session_state["_cronograma_action_success"] = (
-                            f"{int(result.get('atualizadas', 0))} OP(s) alterada(s) para {standard_status}."
-                        )
-                        st.session_state.pop("cronograma_selecao_editor_core", None)
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
+                view = view.assign(_priority_sort=view["prioridade_solicitada"].fillna(False).astype(bool))
+                view = view.sort_values(["_priority_sort", "data_separacao", "op"], ascending=[False, True, True]).drop(columns=["_priority_sort"]).reset_index(drop=True)
+                cronograma_export_view = view.copy()
+                total_cronograma_filtrado = len(view)
+                view = view.head(80).reset_index(drop=True)
 
-                if priority_blocked:
-                    st.caption(f"{priority_blocked} OP(s) selecionada(s) não podem receber prioridade por não possuírem itens elegíveis ou estarem em condição especial/separação já registrada.")
-                if manual_blocked:
-                    st.caption(f"{manual_blocked} OP(s) não podem receber uma alteração operacional padrão nas condições atuais.")
+                st.caption("Marque uma ou mais OPs na coluna Selecionar. Uma OP abre as ações individuais; duas ou mais habilitam a ação em lote.")
+                if total_cronograma_filtrado > 80:
+                    st.caption(f"Exibindo 80 de {total_cronograma_filtrado} projetos. Use a busca e os filtros para localizar os demais.")
 
-                # Com várias OPs marcadas, não abre o painel individual.
-                selected_rows = []
-                # Com várias OPs marcadas, não abre o painel individual.
-                selected_rows = []
+                editor_columns = [
+                    c for c in [
+                        "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo", "data_separacao", "status",
+                            "ultima_alteracao_cronograma", "ultima_alteracao_equipe",
+                        "motivo_alerta", "tratativa_pcp", "responsavel_separacao", "ultimo_comentario"
+                    ] if c in view.columns
+                ]
+                editor_view = view[editor_columns].copy().reset_index(drop=True)
+                editor_view.insert(0, "Selecionar", False)
 
-            if selected_rows:
-                selected_pos = selected_rows[0]
-                project = view.iloc[selected_pos]
-                op_selected = str(project["op"])
-
-                st.markdown(
-                    f"""
-                    <div class="project-card">
-                      <div class="project-title">OP {op_selected}</div>
-                      <div class="project-meta">
-                        PSY: {project['psy']} &nbsp; • &nbsp; Cliente: {project['cliente']}<br>
-                        Produto: {project['produto']} &nbsp; • &nbsp; Data de Separação: {fmt_date(project['data_separacao'])}<br>
-                        Responsável separação: {project.get('responsavel_separacao') or '—'}<br>
-                        Comentário: {project.get('ultimo_comentario') or '—'}<br>
-                        Última alt. cronograma: {fmt_date(project.get('ultima_alteracao_cronograma'))} &nbsp; • &nbsp;
-                        Última alt. separação: {fmt_date(project.get('ultima_alteracao_equipe'))}
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                is_priority = bool(project.get("prioridade_solicitada", False))
-                can_request_priority = priority_allowed(project) and not is_priority
-                if is_priority:
-                    st.info("PRIORIDADE SOLICITADA • Esta OP permanecerá no grupo Em separação até o status ser alterado manualmente.")
-                elif st.button(
-                    "Solicitar prioridade",
-                    type="primary",
-                    use_container_width=True,
-                    disabled=not can_request_priority,
-                    key=f"solicitar_prioridade_{op_selected}",
-                ):
-                    try:
-                        _supabase_api(
-                            "team_action",
-                            {
-                                "op": op_selected,
-                                "status": PRIORITY_STATUS,
-                                "comentario": None,
-                                "responsavel": "Operador",
-                            },
-                            timeout=45,
-                        )
-                        _update_cronograma_local(
-                            [op_selected],
-                            status=PRIORITY_STATUS,
-                            responsavel=_session_operator() or "Operador",
-                        )
-                        st.session_state["_cronograma_action_success"] = "Prioridade solicitada para a OP."
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível solicitar prioridade: {exc}")
-
-                can_change_status = manual_status_allowed(project)
-                responsible = _session_operator_input(
-                    "Operador responsável",
-                    key=f"responsavel_{op_selected}",
-                )
-
-                default_status = (
-                    project["status"]
-                    if project["status"] in STANDARD_MANUAL_STATUS
-                    else STANDARD_MANUAL_STATUS[0]
-                )
-
-                with st.form(f"acoes_projeto_form_{op_selected}", clear_on_submit=False):
-                    a1, a2 = st.columns(2)
-                    do_status = a1.checkbox(
-                        "Alterar status",
-                        key=f"chk_status_{op_selected}",
-                        disabled=not can_change_status,
+                with st.form("cronograma_selecao_form", clear_on_submit=False, enter_to_submit=True):
+                    edited_view = st.data_editor(
+                        editor_view,
+                        use_container_width=True,
+                        hide_index=True,
+                        key="cronograma_selecao_editor_core",
+                        disabled=[c for c in editor_view.columns if c != "Selecionar"],
+                        column_config={
+                            "Selecionar": st.column_config.CheckboxColumn(
+                                "Selecionar",
+                                help="Marque quantas OPs desejar e depois pressione Enter ou Pesquisar.",
+                                default=False,
+                            ),
+                            "op": "OP",
+                            "psy": "PSY",
+                            "cliente": "Cliente",
+                            "produto": "Produto",
+                            "qtd_itens_pendentes": st.column_config.NumberColumn("Quantidade de itens pendentes", format="%d"),
+                            "pendencias_com_saldo": st.column_config.NumberColumn("Pendências com saldo", format="%d"),
+                            "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                            "status": "Status",
+                            "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
+                            "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
+                            "sinalizacao": "Sinalização",
+                            "status_projeto_mrp": "Status MRP",
+                            "situacao_entrega": "Situação separação",
+                            "motivo_alerta": "Motivo / atenção",
+                            "tratativa_pcp": "Tratativa PCP",
+                            "responsavel_separacao": "Responsável separação",
+                            "ultimo_comentario": "Último comentário",
+                        },
                     )
-                    do_comment = a2.checkbox(
-                        "Adicionar comentário",
-                        key=f"chk_comment_{op_selected}",
-                    )
-                    chosen_status = st.selectbox(
-                        "Novo status",
-                        STANDARD_MANUAL_STATUS,
-                        index=STANDARD_MANUAL_STATUS.index(default_status),
-                        key=f"novo_status_{op_selected}",
-                        disabled=not can_change_status,
-                    )
-                    comment_text = st.text_area(
-                        "Comentário",
-                        placeholder="Opcional. Marque Adicionar comentário para gravar este texto.",
-                        height=100,
-                        key=f"novo_comentario_{op_selected}",
-                    )
-                    save_project_action = st.form_submit_button(
-                        "Salvar ações do projeto",
+                    st.form_submit_button(
+                        "Pesquisar",
                         type="primary",
                         use_container_width=True,
                     )
+                st.caption("Os checkboxes são acumulados sem recarregar a tela; pressione Enter ou Pesquisar quando terminar.")
 
-                if not can_change_status:
-                    st.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI SEPARAÇÃO.")
+                selected_rows = edited_view.index[
+                    edited_view["Selecionar"].fillna(False).astype(bool)
+                ].tolist()
 
-                if save_project_action:
-                    if not do_status and not do_comment:
-                        st.warning("Marque Alterar status e/ou Adicionar comentário antes de salvar.")
-                    elif do_comment and not comment_text.strip():
-                        st.warning("Informe um comentário antes de salvar.")
-                    elif "_supabase_api" not in globals():
-                        st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
-                    else:
+                if len(selected_rows) > 1:
+                    selected_projects = view.iloc[selected_rows].copy()
+                    selected_ops = selected_projects["op"].astype(str).drop_duplicates().tolist()
+                    manual_eligibility = selected_projects.apply(manual_status_allowed, axis=1)
+                    priority_eligibility = selected_projects.apply(priority_allowed, axis=1)
+                    already_priority = selected_projects["prioridade_solicitada"].fillna(False).astype(bool)
+                    manual_blocked = int((~manual_eligibility).sum())
+                    priority_blocked = int((~priority_eligibility).sum())
+
+                    st.markdown("#### Ação em lote")
+                    st.info(f"{len(selected_ops)} OPs selecionadas.")
+                    bulk_user = _session_operator_input(
+                        "Operador responsável",
+                        key="core_bulk_user",
+                    )
+
+                    with st.form("cronograma_bulk_actions_form", clear_on_submit=False):
+                        pcol, scol = st.columns([1, 1.35])
+                        with pcol:
+                            priority_submit = st.form_submit_button(
+                                f"Solicitar prioridade ({len(selected_ops)})",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=(priority_blocked > 0 or bool(already_priority.all())),
+                            )
+                        standard_status = scol.selectbox(
+                            "Alterar status para",
+                            STANDARD_MANUAL_STATUS,
+                            index=0,
+                            key="core_bulk_status",
+                        )
+                        apply_submit = st.form_submit_button(
+                            f"Aplicar status nas {len(selected_ops)} OPs",
+                            use_container_width=True,
+                            disabled=manual_blocked > 0,
+                        )
+
+                    if priority_submit:
+                        try:
+                            result = _supabase_api(
+                                "update_status_bulk",
+                                {
+                                    "ops": selected_ops,
+                                    "status": PRIORITY_STATUS,
+                                    "responsavel": bulk_user or "Operador",
+                                },
+                                timeout=45,
+                            )
+                            _update_cronograma_local(
+                                selected_ops,
+                                status=PRIORITY_STATUS,
+                                responsavel=bulk_user or "Operador",
+                            )
+                            st.session_state["_cronograma_action_success"] = (
+                                f"Prioridade solicitada para {int(result.get('atualizadas', 0))} OP(s)."
+                            )
+                            st.session_state.pop("cronograma_selecao_editor_core", None)
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível solicitar prioridade: {exc}")
+
+                    if apply_submit:
+                        try:
+                            result = _supabase_api(
+                                "update_status_bulk",
+                                {
+                                    "ops": selected_ops,
+                                    "status": standard_status,
+                                    "responsavel": bulk_user or "Operador",
+                                },
+                                timeout=45,
+                            )
+                            _update_cronograma_local(
+                                selected_ops,
+                                status=standard_status,
+                                responsavel=bulk_user or "Operador",
+                            )
+                            st.session_state["_cronograma_action_success"] = (
+                                f"{int(result.get('atualizadas', 0))} OP(s) alterada(s) para {standard_status}."
+                            )
+                            st.session_state.pop("cronograma_selecao_editor_core", None)
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível atualizar as OPs selecionadas: {exc}")
+
+                    if priority_blocked:
+                        st.caption(f"{priority_blocked} OP(s) selecionada(s) não podem receber prioridade por não possuírem itens elegíveis ou estarem em condição especial/separação já registrada.")
+                    if manual_blocked:
+                        st.caption(f"{manual_blocked} OP(s) não podem receber uma alteração operacional padrão nas condições atuais.")
+
+                    # Com várias OPs marcadas, não abre o painel individual.
+                    selected_rows = []
+                    # Com várias OPs marcadas, não abre o painel individual.
+                    selected_rows = []
+
+                if selected_rows:
+                    selected_pos = selected_rows[0]
+                    project = view.iloc[selected_pos]
+                    op_selected = str(project["op"])
+
+                    st.markdown(
+                        f"""
+                        <div class="project-card">
+                          <div class="project-title">OP {op_selected}</div>
+                          <div class="project-meta">
+                            PSY: {project['psy']} &nbsp; • &nbsp; Cliente: {project['cliente']}<br>
+                            Produto: {project['produto']} &nbsp; • &nbsp; Data de Separação: {fmt_date(project['data_separacao'])}<br>
+                            Responsável separação: {project.get('responsavel_separacao') or '—'}<br>
+                            Comentário: {project.get('ultimo_comentario') or '—'}<br>
+                            Última alt. cronograma: {fmt_date(project.get('ultima_alteracao_cronograma'))} &nbsp; • &nbsp;
+                            Última alt. separação: {fmt_date(project.get('ultima_alteracao_equipe'))}
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    is_priority = bool(project.get("prioridade_solicitada", False))
+                    can_request_priority = priority_allowed(project) and not is_priority
+                    if is_priority:
+                        st.info("PRIORIDADE SOLICITADA • Esta OP permanecerá no grupo Em separação até o status ser alterado manualmente.")
+                    elif st.button(
+                        "Solicitar prioridade",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=not can_request_priority,
+                        key=f"solicitar_prioridade_{op_selected}",
+                    ):
                         try:
                             _supabase_api(
                                 "team_action",
                                 {
                                     "op": op_selected,
-                                    "status": chosen_status if do_status else None,
-                                    "comentario": comment_text.strip() if do_comment else None,
-                                    "responsavel": responsible or "Operador",
+                                    "status": PRIORITY_STATUS,
+                                    "comentario": None,
+                                    "responsavel": "Operador",
                                 },
                                 timeout=45,
                             )
                             _update_cronograma_local(
                                 [op_selected],
-                                status=chosen_status if do_status else None,
-                                responsavel=responsible or "Operador",
-                                comentario=comment_text.strip() if do_comment else None,
+                                status=PRIORITY_STATUS,
+                                responsavel=_session_operator() or "Operador",
                             )
-                            st.session_state["_cronograma_action_success"] = "Ação da equipe de separação registrada."
+                            st.session_state["_cronograma_action_success"] = "Prioridade solicitada para a OP."
                             st.rerun()
                         except Exception as exc:
-                            st.error(f"Não foi possível salvar a ação: {exc}")
+                            st.error(f"Não foi possível solicitar prioridade: {exc}")
 
-                comments = pd.DataFrame(st.session_state.comments)
-                if not comments.empty:
-                    project_comments = comments[comments["op"].astype(str) == op_selected]
-                    if not project_comments.empty:
-                        st.markdown("##### Comentários da OP")
-                        st.dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
+                    can_change_status = manual_status_allowed(project)
+                    responsible = _session_operator_input(
+                        "Operador responsável",
+                        key=f"responsavel_{op_selected}",
+                    )
 
-        if not schedule.empty:
-            st.divider()
-            cronograma_export_cols = [c for c in [
-                "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo",
-                "data_separacao", "status", "responsavel_separacao", "ultimo_comentario",
-                "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "sinalizacao", "motivo_alerta", "tratativa_pcp"
-            ] if c in cronograma_export_view.columns]
-            if st.button("Preparar Excel do Cronograma", key="cronograma_prepare_export"):
-                st.session_state["_cronograma_export_bytes"] = _excel_bytes(
-                    cronograma_export_view[cronograma_export_cols], "Cronograma"
-                )
-            if st.session_state.get("_cronograma_export_bytes"):
-                st.download_button(
-                    "Baixar Cronograma filtrado em Excel",
-                    data=st.session_state["_cronograma_export_bytes"],
-                    file_name=f"cronograma_{today().strftime('%d%m%Y')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key="cronograma_download_export",
-                )
+                    default_status = (
+                        project["status"]
+                        if project["status"] in STANDARD_MANUAL_STATUS
+                        else STANDARD_MANUAL_STATUS[0]
+                    )
+
+                    with st.form(f"acoes_projeto_form_{op_selected}", clear_on_submit=False):
+                        a1, a2 = st.columns(2)
+                        do_status = a1.checkbox(
+                            "Alterar status",
+                            key=f"chk_status_{op_selected}",
+                            disabled=not can_change_status,
+                        )
+                        do_comment = a2.checkbox(
+                            "Adicionar comentário",
+                            key=f"chk_comment_{op_selected}",
+                        )
+                        chosen_status = st.selectbox(
+                            "Novo status",
+                            STANDARD_MANUAL_STATUS,
+                            index=STANDARD_MANUAL_STATUS.index(default_status),
+                            key=f"novo_status_{op_selected}",
+                            disabled=not can_change_status,
+                        )
+                        comment_text = st.text_area(
+                            "Comentário",
+                            placeholder="Opcional. Marque Adicionar comentário para gravar este texto.",
+                            height=100,
+                            key=f"novo_comentario_{op_selected}",
+                        )
+                        save_project_action = st.form_submit_button(
+                            "Salvar ações do projeto",
+                            type="primary",
+                            use_container_width=True,
+                        )
+
+                    if not can_change_status:
+                        st.caption("Status automático: exige itens pendentes, data para hoje/futuro e NÃO POSSUI SEPARAÇÃO.")
+
+                    if save_project_action:
+                        if not do_status and not do_comment:
+                            st.warning("Marque Alterar status e/ou Adicionar comentário antes de salvar.")
+                        elif do_comment and not comment_text.strip():
+                            st.warning("Informe um comentário antes de salvar.")
+                        elif "_supabase_api" not in globals():
+                            st.error("Conexão com o Supabase indisponível. A ação não foi salva.")
+                        else:
+                            try:
+                                _supabase_api(
+                                    "team_action",
+                                    {
+                                        "op": op_selected,
+                                        "status": chosen_status if do_status else None,
+                                        "comentario": comment_text.strip() if do_comment else None,
+                                        "responsavel": responsible or "Operador",
+                                    },
+                                    timeout=45,
+                                )
+                                _update_cronograma_local(
+                                    [op_selected],
+                                    status=chosen_status if do_status else None,
+                                    responsavel=responsible or "Operador",
+                                    comentario=comment_text.strip() if do_comment else None,
+                                )
+                                st.session_state["_cronograma_action_success"] = "Ação da equipe de separação registrada."
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Não foi possível salvar a ação: {exc}")
+
+                    comments = pd.DataFrame(st.session_state.comments)
+                    if not comments.empty:
+                        project_comments = comments[comments["op"].astype(str) == op_selected]
+                        if not project_comments.empty:
+                            st.markdown("##### Comentários da OP")
+                            st.dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
+
+            if not schedule.empty:
+                st.divider()
+                cronograma_export_cols = [c for c in [
+                    "op", "psy", "cliente", "produto", "qtd_itens_pendentes", "pendencias_com_saldo",
+                    "data_separacao", "status", "responsavel_separacao", "ultimo_comentario",
+                    "ultima_alteracao_cronograma", "ultima_alteracao_equipe", "sinalizacao", "motivo_alerta", "tratativa_pcp"
+                ] if c in cronograma_export_view.columns]
+                if st.button("Preparar Excel do Cronograma", key="cronograma_prepare_export"):
+                    st.session_state["_cronograma_export_bytes"] = _excel_bytes(
+                        cronograma_export_view[cronograma_export_cols], "Cronograma"
+                    )
+                if st.session_state.get("_cronograma_export_bytes"):
+                    st.download_button(
+                        "Baixar Cronograma filtrado em Excel",
+                        data=st.session_state["_cronograma_export_bytes"],
+                        file_name=f"cronograma_{today().strftime('%d%m%Y')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="cronograma_download_export",
+                    )
 
     with tab_pcp:
-        pcp_success = st.session_state.pop("_pcp_bulk_success", None)
-        if pcp_success:
-            st.success(pcp_success)
-        schedule = st.session_state.schedule
-        if not schedule.empty:
-            schedule = apply_operational_statuses(schedule, total_items_by_op())
-            pending = schedule[schedule["alerta_ativo"]].copy()
-        else:
-            pending = pd.DataFrame()
-        if pending.empty:
-            st.success("Não existem alertas críticos pendentes de tratativa.")
-        else:
-            pending = pending.sort_values(["data_separacao", "op"], na_position="last").reset_index(drop=True)
-            st.markdown(
-                f'<div class="critical"><b>{len(pending)} ocorrência(s) crítica(s) pendente(s).</b><br>'
-                'As ações abaixo consideram todas as OPs exibidas nesta tela.</div>',
-                unsafe_allow_html=True,
-            )
-            st.dataframe(
-                pending[["op", "cliente", "produto", "data_separacao", "status", "motivo_alerta", "tratativa_pcp"]],
-                use_container_width=True,
-                hide_index=True,
-                column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
-            )
+        if _tab_visible(tab_pcp):
+            pcp_success = st.session_state.pop("_pcp_bulk_success", None)
+            if pcp_success:
+                st.success(pcp_success)
+            schedule = st.session_state.schedule
+            if not schedule.empty:
+                schedule = apply_operational_statuses(schedule, total_items_by_op())
+                pending = schedule[schedule["alerta_ativo"]].copy()
+            else:
+                pending = pd.DataFrame()
+            if pending.empty:
+                st.success("Não existem alertas críticos pendentes de tratativa.")
+            else:
+                pending = pending.sort_values(["data_separacao", "op"], na_position="last").reset_index(drop=True)
+                st.markdown(
+                    f'<div class="critical"><b>{len(pending)} ocorrência(s) crítica(s) pendente(s).</b><br>'
+                    'As ações abaixo consideram todas as OPs exibidas nesta tela.</div>',
+                    unsafe_allow_html=True,
+                )
+                st.dataframe(
+                    pending[["op", "cliente", "produto", "data_separacao", "status", "motivo_alerta", "tratativa_pcp"]],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
+                )
 
-            teams_chat_url = (
-                "https://teams.microsoft.com/l/chat/19:aaaabe3d1f234eac84de2954bc9c1505@thread.v2/"
-                "conversations?context=%7B%22contextType%22%3A%22chat%22%7D"
-            )
-            ops_pcp = pending["op"].astype(str).drop_duplicates().tolist()
-            linhas_projetos = [
-                f"PROJETO {str(row['op'])} - {fmt_date(row.get('data_separacao'))} - {str(row.get('motivo_alerta') or row.get('status') or 'ALERTA')}"
-                for _, row in pending.drop_duplicates(subset=["op"]).iterrows()
-            ]
-            teams_message = "\n".join([
-                "OPS IDENTIFICADAS COM ALTERAÇÃO DE DATA INCONSISTENTE:",
-                f"DATA DE IDENTIFICAÇÃO: {today().strftime('%d/%m/%Y')}",
-                "",
-                *linhas_projetos,
-            ])
+                teams_chat_url = (
+                    "https://teams.microsoft.com/l/chat/19:aaaabe3d1f234eac84de2954bc9c1505@thread.v2/"
+                    "conversations?context=%7B%22contextType%22%3A%22chat%22%7D"
+                )
+                ops_pcp = pending["op"].astype(str).drop_duplicates().tolist()
+                linhas_projetos = [
+                    f"PROJETO {str(row['op'])} - {fmt_date(row.get('data_separacao'))} - {str(row.get('motivo_alerta') or row.get('status') or 'ALERTA')}"
+                    for _, row in pending.drop_duplicates(subset=["op"]).iterrows()
+                ]
+                teams_message = "\n".join([
+                    "OPS IDENTIFICADAS COM ALTERAÇÃO DE DATA INCONSISTENTE:",
+                    f"DATA DE IDENTIFICAÇÃO: {today().strftime('%d/%m/%Y')}",
+                    "",
+                    *linhas_projetos,
+                ])
 
-            with st.expander("Prévia da mensagem para o Teams", expanded=False):
-                st.code(teams_message, language=None)
+                with st.expander("Prévia da mensagem para o Teams", expanded=False):
+                    st.code(teams_message, language=None)
 
-            msg_js = json.dumps(teams_message, ensure_ascii=False)
-            url_js = json.dumps(teams_chat_url)
-            components.html(
-                f"""
-                <div style="font-family:Arial,sans-serif;">
-                  <button id="teams-open-btn" style="
-                    width:100%;height:42px;border:0;border-radius:8px;
-                    background:#5b5fc7;color:white;font-weight:700;cursor:pointer;
-                    font-size:14px;
-                  ">Abrir chat no Teams</button>
-                  <div id="teams-copy-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>
-                </div>
-                <script>
-                  const teamsMessage = {msg_js};
-                  const teamsUrl = {url_js};
-                  const statusEl = document.getElementById('teams-copy-status');
+                msg_js = json.dumps(teams_message, ensure_ascii=False)
+                url_js = json.dumps(teams_chat_url)
+                components.html(
+                    f"""
+                    <div style="font-family:Arial,sans-serif;">
+                      <button id="teams-open-btn" style="
+                        width:100%;height:42px;border:0;border-radius:8px;
+                        background:#5b5fc7;color:white;font-weight:700;cursor:pointer;
+                        font-size:14px;
+                      ">Abrir chat no Teams</button>
+                      <div id="teams-copy-status" style="margin-top:7px;font-size:12px;color:#667085;"></div>
+                    </div>
+                    <script>
+                      const teamsMessage = {msg_js};
+                      const teamsUrl = {url_js};
+                      const statusEl = document.getElementById('teams-copy-status');
 
-                  function copySynchronously(text) {{
-                    const textarea = document.createElement('textarea');
-                    textarea.value = text;
-                    textarea.setAttribute('readonly', '');
-                    textarea.style.position = 'fixed';
-                    textarea.style.opacity = '0';
-                    textarea.style.left = '-9999px';
-                    textarea.style.top = '0';
-                    document.body.appendChild(textarea);
-                    textarea.focus();
-                    textarea.select();
-                    textarea.setSelectionRange(0, textarea.value.length);
-                    let copied = false;
-                    try {{
-                      copied = document.execCommand('copy');
-                    }} catch (err) {{
-                      copied = false;
-                    }}
-                    document.body.removeChild(textarea);
-                    return copied;
-                  }}
+                      function copySynchronously(text) {{
+                        const textarea = document.createElement('textarea');
+                        textarea.value = text;
+                        textarea.setAttribute('readonly', '');
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        textarea.style.left = '-9999px';
+                        textarea.style.top = '0';
+                        document.body.appendChild(textarea);
+                        textarea.focus();
+                        textarea.select();
+                        textarea.setSelectionRange(0, textarea.value.length);
+                        let copied = false;
+                        try {{
+                          copied = document.execCommand('copy');
+                        }} catch (err) {{
+                          copied = false;
+                        }}
+                        document.body.removeChild(textarea);
+                        return copied;
+                      }}
 
-                  document.getElementById('teams-open-btn').addEventListener('click', () => {{
-                    const copiedNow = copySynchronously(teamsMessage);
-                    window.open(teamsUrl, '_blank', 'noopener,noreferrer');
+                      document.getElementById('teams-open-btn').addEventListener('click', () => {{
+                        const copiedNow = copySynchronously(teamsMessage);
+                        window.open(teamsUrl, '_blank', 'noopener,noreferrer');
 
-                    if (copiedNow) {{
-                      statusEl.textContent = 'Mensagem copiada automaticamente. No Teams, basta colar e enviar.';
-                      return;
-                    }}
-
-                    if (navigator.clipboard && window.isSecureContext) {{
-                      navigator.clipboard.writeText(teamsMessage)
-                        .then(() => {{
+                        if (copiedNow) {{
                           statusEl.textContent = 'Mensagem copiada automaticamente. No Teams, basta colar e enviar.';
-                        }})
-                        .catch(() => {{
+                          return;
+                        }}
+
+                        if (navigator.clipboard && window.isSecureContext) {{
+                          navigator.clipboard.writeText(teamsMessage)
+                            .then(() => {{
+                              statusEl.textContent = 'Mensagem copiada automaticamente. No Teams, basta colar e enviar.';
+                            }})
+                            .catch(() => {{
+                              statusEl.textContent = 'O navegador bloqueou a cópia automática. Use o ícone de copiar na prévia acima.';
+                            }});
+                        }} else {{
                           statusEl.textContent = 'O navegador bloqueou a cópia automática. Use o ícone de copiar na prévia acima.';
-                        }});
-                    }} else {{
-                      statusEl.textContent = 'O navegador bloqueou a cópia automática. Use o ícone de copiar na prévia acima.';
-                    }}
-                  }});
-                </script>
-                """,
-                height=76,
-            )
+                        }}
+                      }});
+                    </script>
+                    """,
+                    height=76,
+                )
 
-            user_pcp = _session_operator_input(
-                "Operador responsável",
-                key="pcp_bulk_responsavel",
-            )
-            comentario_pcp = st.text_area(
-                "Comentário da tratativa (opcional)",
-                placeholder="Registre a orientação, retorno do PCP ou decisão tomada.",
-                key="pcp_bulk_comentario",
-                height=90,
-            )
-            st.caption("Status especiais do MRP permanecem sinalizados visualmente, mas não mantêm uma tratativa crítica encerrada como aberta.")
+                user_pcp = _session_operator_input(
+                    "Operador responsável",
+                    key="pcp_bulk_responsavel",
+                )
+                comentario_pcp = st.text_area(
+                    "Comentário da tratativa (opcional)",
+                    placeholder="Registre a orientação, retorno do PCP ou decisão tomada.",
+                    key="pcp_bulk_comentario",
+                    height=90,
+                )
+                st.caption("Status especiais do MRP permanecem sinalizados visualmente, mas não mantêm uma tratativa crítica encerrada como aberta.")
 
-            if st.button("Concluir ações", type="primary", key="pcp_bulk_concluir"):
-                if "_supabase_api" not in globals():
-                    st.error("Conexão com o Supabase indisponível. As ocorrências não foram concluídas.")
-                else:
-                    try:
-                        result = _supabase_api(
-                            "close_pcp_bulk",
-                            {
-                                "ops": ops_pcp,
-                                "responsavel": user_pcp or "Operador",
-                                "comentario": comentario_pcp.strip() or None,
-                            },
-                            timeout=45,
-                        )
-                        st.session_state["_entrega_supabase_sync"] = False
-                        if "_sync_current_from_supabase" in globals():
-                            _sync_current_from_supabase(force=True)
-                        atualizadas = int(result.get("atualizadas", 0))
-                        ignoradas = int(result.get("ignoradas", 0))
-                        st.session_state["_pcp_bulk_success"] = (
-                            f"{atualizadas} ocorrência(s) concluída(s) por {user_pcp or 'Operador'}."
-                            + (f" {ignoradas} ocorrência(s) já estavam encerradas ou não foram encontradas." if ignoradas else "")
-                        )
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível concluir as ocorrências: {exc}")
+                if st.button("Concluir ações", type="primary", key="pcp_bulk_concluir"):
+                    if "_supabase_api" not in globals():
+                        st.error("Conexão com o Supabase indisponível. As ocorrências não foram concluídas.")
+                    else:
+                        try:
+                            result = _supabase_api(
+                                "close_pcp_bulk",
+                                {
+                                    "ops": ops_pcp,
+                                    "responsavel": user_pcp or "Operador",
+                                    "comentario": comentario_pcp.strip() or None,
+                                },
+                                timeout=45,
+                            )
+                            st.session_state["_entrega_supabase_sync"] = False
+                            if "_sync_current_from_supabase" in globals():
+                                _sync_current_from_supabase(force=True)
+                            atualizadas = int(result.get("atualizadas", 0))
+                            ignoradas = int(result.get("ignoradas", 0))
+                            st.session_state["_pcp_bulk_success"] = (
+                                f"{atualizadas} ocorrência(s) concluída(s) por {user_pcp or 'Operador'}."
+                                + (f" {ignoradas} ocorrência(s) já estavam encerradas ou não foram encontradas." if ignoradas else "")
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível concluir as ocorrências: {exc}")
 
 
 elif page == "Materiais":
@@ -4073,227 +4088,230 @@ elif page == "Materiais":
             mat_m3.metric("Separados", total_separados)
             mat_m4.metric("Com problema", total_problemas)
 
-            tab_pending, tab_done, tab_problem = st.tabs([
+            tab_pending, tab_done, tab_problem = _lazy_tabs([
                 f"Pendentes de separação ({total_pendentes})",
                 f"Separados ({total_separados})",
                 f"Materiais com problema ({total_problemas})",
-            ])
+            ], "materiais_tabs")
 
             with tab_pending:
-                st.caption(
-                    "Selecione um ou mais materiais. Ao marcar como separado, eles passam para a aba Separados. "
-                    "Ao relatar problema, o comentário é obrigatório e o item passa para Materiais com problema."
-                )
-                if pendentes_view.empty:
-                    st.success("Não existem itens pendentes dentro dos filtros selecionados.")
-                else:
-                    if total_pendentes > 80:
-                        st.caption(f"Exibindo 80 de {total_pendentes} itens pendentes. Use a pesquisa e os filtros para refinar.")
-                    editor = pendentes_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
-                    editor.insert(0, "Selecionar", False)
-                    with st.form("materiais_selecao_form", clear_on_submit=False, enter_to_submit=True):
-                        edited = st.data_editor(
-                            editor,
-                            use_container_width=True,
-                            hide_index=True,
-                            key="materiais_pendentes_editor",
-                            disabled=[c for c in editor.columns if c != "Selecionar"],
-                            column_config={
-                                "Selecionar": st.column_config.CheckboxColumn(
-                                    "Selecionar",
-                                    help="Marque quantos itens desejar e depois pressione Enter ou Pesquisar.",
-                                    default=False,
-                                ),
-                            },
-                        )
-                        st.form_submit_button(
-                            "Pesquisar",
-                            type="primary",
-                            use_container_width=True,
-                        )
-                    st.caption("Os checkboxes são acumulados sem recarregar a consulta; pressione Enter ou Pesquisar quando terminar.")
-                    selected = edited[edited["Selecionar"].fillna(False).astype(bool)].copy()
-
-                    if not selected.empty:
-                        st.markdown(f"**{len(selected)} item(ns) selecionado(s).**")
-                        responsavel_material = _session_operator_input(
-                            "Operador responsável",
-                            key="material_bulk_responsavel",
-                        )
-                        comentario_material = st.text_area(
-                            "Comentário para os itens selecionados",
-                            placeholder="Obrigatório ao relatar problema. Nas demais ações, o comentário é opcional.",
-                            key="material_bulk_comentario",
-                            height=90,
-                        )
-
-                        itens_payload = [
-                            {
-                                "projeto": normalize_op(r.get("Projeto")),
-                                "produto": normalize_op(r.get("Produto")),
-                            }
-                            for _, r in selected.iterrows()
-                        ]
-
-                        b1, b2, b3 = st.columns(3)
-                        b4, b5 = st.columns(2)
-                        if b1.button(
-                            "Solicitar prioridade",
-                            type="primary",
-                            use_container_width=True,
-                            key="material_bulk_prioridade",
-                        ):
-                            try:
-                                result = _supabase_api(
-                                    "material_action_bulk",
-                                    {
-                                        "itens": itens_payload,
-                                        "status": PRIORITY_STATUS,
-                                        "comentario": comentario_material.strip() or None,
-                                        "responsavel": responsavel_material or "Operador",
-                                    },
-                                    timeout=45,
-                                )
-                                _sync_material_ops(force=True)
-                                st.session_state["_material_action_success"] = (
-                                    f"Prioridade solicitada para {int(result.get('atualizados', len(itens_payload)))} item(ns)."
-                                )
-                                st.session_state.pop("materiais_pendentes_editor", None)
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Não foi possível solicitar prioridade: {exc}")
-
-                        if b2.button(
-                            "Remover prioridade",
-                            use_container_width=True,
-                            key="material_bulk_remover_prioridade",
-                        ):
-                            try:
-                                result = _supabase_api(
-                                    "material_action_bulk",
-                                    {
-                                        "itens": itens_payload,
-                                        "status": "Pendente",
-                                        "comentario": comentario_material.strip() or None,
-                                        "responsavel": responsavel_material or "Operador",
-                                    },
-                                    timeout=45,
-                                )
-                                _sync_material_ops(force=True)
-                                st.session_state["_material_action_success"] = (
-                                    f"Prioridade removida de {int(result.get('atualizados', len(itens_payload)))} item(ns)."
-                                )
-                                st.session_state.pop("materiais_pendentes_editor", None)
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Não foi possível remover a prioridade: {exc}")
-
-                        if b3.button(
-                            "Marcar como separado",
-                            use_container_width=True,
-                            key="material_bulk_separado",
-                        ):
-                            try:
-                                result = _supabase_api(
-                                    "material_action_bulk",
-                                    {
-                                        "itens": itens_payload,
-                                        "status": "Separado",
-                                        "comentario": comentario_material.strip() or None,
-                                        "responsavel": responsavel_material or "Operador",
-                                    },
-                                    timeout=45,
-                                )
-                                _sync_material_ops(force=True)
-                                st.session_state["_material_action_success"] = (
-                                    f"{int(result.get('atualizados', len(itens_payload)))} item(ns) marcado(s) como separado."
-                                )
-                                st.session_state.pop("materiais_pendentes_editor", None)
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Não foi possível marcar os itens como separados: {exc}")
-
-                        if b4.button(
-                            "Relatar problema",
-                            use_container_width=True,
-                            key="material_bulk_problem",
-                        ):
-                            if not comentario_material.strip():
-                                st.warning("Informe o problema no campo de comentário antes de continuar.")
-                            else:
-                                try:
-                                    result = _supabase_api(
-                                        "material_action_bulk",
-                                        {
-                                            "itens": itens_payload,
-                                            "status": "Com problema",
-                                            "comentario": comentario_material.strip(),
-                                            "responsavel": responsavel_material or "Operador",
-                                        },
-                                        timeout=45,
-                                    )
-                                    _sync_material_ops(force=True)
-                                    st.session_state["_material_action_success"] = (
-                                        f"Problema registrado em {int(result.get('atualizados', len(itens_payload)))} item(ns)."
-                                    )
-                                    st.session_state.pop("materiais_pendentes_editor", None)
-                                    st.rerun()
-                                except Exception as exc:
-                                    st.error(f"Não foi possível registrar o problema: {exc}")
-
-                        if b5.button(
-                            "Salvar comentário",
-                            use_container_width=True,
-                            key="material_bulk_comment",
-                        ):
-                            if not comentario_material.strip():
-                                st.warning("Digite um comentário antes de salvar.")
-                            else:
-                                try:
-                                    result = _supabase_api(
-                                        "material_action_bulk",
-                                        {
-                                            "itens": itens_payload,
-                                            "status": None,
-                                            "comentario": comentario_material.strip(),
-                                            "responsavel": responsavel_material or "Operador",
-                                        },
-                                        timeout=45,
-                                    )
-                                    _sync_material_ops(force=True)
-                                    st.session_state["_material_action_success"] = (
-                                        f"Comentário salvo em {int(result.get('atualizados', len(itens_payload)))} item(ns)."
-                                    )
-                                    st.session_state.pop("materiais_pendentes_editor", None)
-                                    st.rerun()
-                                except Exception as exc:
-                                    st.error(f"Não foi possível salvar o comentário: {exc}")
+                if _tab_visible(tab_pending):
+                    st.caption(
+                        "Selecione um ou mais materiais. Ao marcar como separado, eles passam para a aba Separados. "
+                        "Ao relatar problema, o comentário é obrigatório e o item passa para Materiais com problema."
+                    )
+                    if pendentes_view.empty:
+                        st.success("Não existem itens pendentes dentro dos filtros selecionados.")
                     else:
-                        st.caption("Marque os itens desejados na primeira coluna para liberar as ações em lote.")
+                        if total_pendentes > 80:
+                            st.caption(f"Exibindo 80 de {total_pendentes} itens pendentes. Use a pesquisa e os filtros para refinar.")
+                        editor = pendentes_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
+                        editor.insert(0, "Selecionar", False)
+                        with st.form("materiais_selecao_form", clear_on_submit=False, enter_to_submit=True):
+                            edited = st.data_editor(
+                                editor,
+                                use_container_width=True,
+                                hide_index=True,
+                                key="materiais_pendentes_editor",
+                                disabled=[c for c in editor.columns if c != "Selecionar"],
+                                column_config={
+                                    "Selecionar": st.column_config.CheckboxColumn(
+                                        "Selecionar",
+                                        help="Marque quantos itens desejar e depois pressione Enter ou Pesquisar.",
+                                        default=False,
+                                    ),
+                                },
+                            )
+                            st.form_submit_button(
+                                "Pesquisar",
+                                type="primary",
+                                use_container_width=True,
+                            )
+                        st.caption("Os checkboxes são acumulados sem recarregar a consulta; pressione Enter ou Pesquisar quando terminar.")
+                        selected = edited[edited["Selecionar"].fillna(False).astype(bool)].copy()
+
+                        if not selected.empty:
+                            st.markdown(f"**{len(selected)} item(ns) selecionado(s).**")
+                            responsavel_material = _session_operator_input(
+                                "Operador responsável",
+                                key="material_bulk_responsavel",
+                            )
+                            comentario_material = st.text_area(
+                                "Comentário para os itens selecionados",
+                                placeholder="Obrigatório ao relatar problema. Nas demais ações, o comentário é opcional.",
+                                key="material_bulk_comentario",
+                                height=90,
+                            )
+
+                            itens_payload = [
+                                {
+                                    "projeto": normalize_op(r.get("Projeto")),
+                                    "produto": normalize_op(r.get("Produto")),
+                                }
+                                for _, r in selected.iterrows()
+                            ]
+
+                            b1, b2, b3 = st.columns(3)
+                            b4, b5 = st.columns(2)
+                            if b1.button(
+                                "Solicitar prioridade",
+                                type="primary",
+                                use_container_width=True,
+                                key="material_bulk_prioridade",
+                            ):
+                                try:
+                                    result = _supabase_api(
+                                        "material_action_bulk",
+                                        {
+                                            "itens": itens_payload,
+                                            "status": PRIORITY_STATUS,
+                                            "comentario": comentario_material.strip() or None,
+                                            "responsavel": responsavel_material or "Operador",
+                                        },
+                                        timeout=45,
+                                    )
+                                    _sync_material_ops(force=True)
+                                    st.session_state["_material_action_success"] = (
+                                        f"Prioridade solicitada para {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                    )
+                                    st.session_state.pop("materiais_pendentes_editor", None)
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível solicitar prioridade: {exc}")
+
+                            if b2.button(
+                                "Remover prioridade",
+                                use_container_width=True,
+                                key="material_bulk_remover_prioridade",
+                            ):
+                                try:
+                                    result = _supabase_api(
+                                        "material_action_bulk",
+                                        {
+                                            "itens": itens_payload,
+                                            "status": "Pendente",
+                                            "comentario": comentario_material.strip() or None,
+                                            "responsavel": responsavel_material or "Operador",
+                                        },
+                                        timeout=45,
+                                    )
+                                    _sync_material_ops(force=True)
+                                    st.session_state["_material_action_success"] = (
+                                        f"Prioridade removida de {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                    )
+                                    st.session_state.pop("materiais_pendentes_editor", None)
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível remover a prioridade: {exc}")
+
+                            if b3.button(
+                                "Marcar como separado",
+                                use_container_width=True,
+                                key="material_bulk_separado",
+                            ):
+                                try:
+                                    result = _supabase_api(
+                                        "material_action_bulk",
+                                        {
+                                            "itens": itens_payload,
+                                            "status": "Separado",
+                                            "comentario": comentario_material.strip() or None,
+                                            "responsavel": responsavel_material or "Operador",
+                                        },
+                                        timeout=45,
+                                    )
+                                    _sync_material_ops(force=True)
+                                    st.session_state["_material_action_success"] = (
+                                        f"{int(result.get('atualizados', len(itens_payload)))} item(ns) marcado(s) como separado."
+                                    )
+                                    st.session_state.pop("materiais_pendentes_editor", None)
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível marcar os itens como separados: {exc}")
+
+                            if b4.button(
+                                "Relatar problema",
+                                use_container_width=True,
+                                key="material_bulk_problem",
+                            ):
+                                if not comentario_material.strip():
+                                    st.warning("Informe o problema no campo de comentário antes de continuar.")
+                                else:
+                                    try:
+                                        result = _supabase_api(
+                                            "material_action_bulk",
+                                            {
+                                                "itens": itens_payload,
+                                                "status": "Com problema",
+                                                "comentario": comentario_material.strip(),
+                                                "responsavel": responsavel_material or "Operador",
+                                            },
+                                            timeout=45,
+                                        )
+                                        _sync_material_ops(force=True)
+                                        st.session_state["_material_action_success"] = (
+                                            f"Problema registrado em {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                        )
+                                        st.session_state.pop("materiais_pendentes_editor", None)
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Não foi possível registrar o problema: {exc}")
+
+                            if b5.button(
+                                "Salvar comentário",
+                                use_container_width=True,
+                                key="material_bulk_comment",
+                            ):
+                                if not comentario_material.strip():
+                                    st.warning("Digite um comentário antes de salvar.")
+                                else:
+                                    try:
+                                        result = _supabase_api(
+                                            "material_action_bulk",
+                                            {
+                                                "itens": itens_payload,
+                                                "status": None,
+                                                "comentario": comentario_material.strip(),
+                                                "responsavel": responsavel_material or "Operador",
+                                            },
+                                            timeout=45,
+                                        )
+                                        _sync_material_ops(force=True)
+                                        st.session_state["_material_action_success"] = (
+                                            f"Comentário salvo em {int(result.get('atualizados', len(itens_payload)))} item(ns)."
+                                        )
+                                        st.session_state.pop("materiais_pendentes_editor", None)
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Não foi possível salvar o comentário: {exc}")
+                        else:
+                            st.caption("Marque os itens desejados na primeira coluna para liberar as ações em lote.")
 
             with tab_done:
-                st.caption("Itens já marcados como separados pela equipe.")
-                if separados_view.empty:
-                    st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
-                else:
-                    st.dataframe(
-                        separados_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+                if _tab_visible(tab_done):
+                    st.caption("Itens já marcados como separados pela equipe.")
+                    if separados_view.empty:
+                        st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
+                    else:
+                        st.dataframe(
+                            separados_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
             with tab_problem:
-                st.caption("Materiais reportados com problema pela equipe. O comentário registra o motivo informado pelo operador.")
-                if problemas_view.empty:
-                    st.info("Nenhum material com problema registrado dentro dos filtros selecionados.")
-                else:
-                    if total_problemas > 80:
-                        st.caption(f"Exibindo 80 de {total_problemas} itens com problema. Refine pelos filtros se necessário.")
-                    st.dataframe(
-                        problemas_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+                if _tab_visible(tab_problem):
+                    st.caption("Materiais reportados com problema pela equipe. O comentário registra o motivo informado pelo operador.")
+                    if problemas_view.empty:
+                        st.info("Nenhum material com problema registrado dentro dos filtros selecionados.")
+                    else:
+                        if total_problemas > 80:
+                            st.caption(f"Exibindo 80 de {total_problemas} itens com problema. Refine pelos filtros se necessário.")
+                        st.dataframe(
+                            problemas_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
 
             if st.button("Preparar Excel dos materiais filtrados", key="materiais_prepare_export"):
@@ -4508,198 +4526,199 @@ elif page == "NFs":
             )
 
 elif page == "Histórico":
-    history_tab_general, history_tab_materials, history_tab_users, history_tab_archive, history_tab_feed = st.tabs([
+    history_tab_general, history_tab_materials, history_tab_users, history_tab_archive, history_tab_feed = _lazy_tabs([
         "Histórico geral", "Movimentações de materiais", "Gestão de usuários", "Carga histórica", "Alimentação"
-    ])
+    ], "historico_tabs")
     with history_tab_general:
-        st.markdown("#### Alertas críticos diários")
-        st.caption(
-            "Cada carga oficial registra as OPs que estavam com alerta crítico ativo naquele dia. "
-            "O histórico permanece mesmo após a conclusão da tratativa."
-        )
-
-        with st.form("historico_alertas_filtros_form", clear_on_submit=False, enter_to_submit=True):
-            hf1, hf2 = st.columns([1, 1.6])
-            historico_data = hf1.date_input(
-                "Data do registro",
-                value=None,
-                key="historico_alertas_data_v2",
-                format="DD/MM/YYYY",
-            )
-            historico_op = hf2.text_input(
-                "Buscar OP",
-                key="historico_alertas_op_v2",
-                placeholder="Digite parte da OP",
-            )
-            search_col, clear_col = st.columns([14, 1])
-            historico_filter_submit = search_col.form_submit_button(
-                "Pesquisar", type="primary", use_container_width=True
-            )
-            clear_col.form_submit_button(
-                "Limpar",
-                key="filter_clear_group__historico_alertas",
-                help="Limpar todos os filtros desta aba",
-                use_container_width=True,
-                on_click=_clear_filter_group,
-                args=({
-                    "historico_alertas_data_v2": None,
-                    "historico_alertas_op_v2": "",
-                }, ("_alertas_export_bytes",)),
-            )
-        st.caption("A consulta é executada somente ao clicar em Pesquisar ou pressionar Enter.")
-
-        daily_alerts = pd.DataFrame()
-        total_historico = 0
-        if "_supabase_api" not in globals():
-            st.warning("Conexão com o Supabase indisponível para consultar o registro diário de alertas.")
-        else:
-            try:
-                daily_rows = _cached_supabase_read(
-                    "list_daily_alerts",
-                    {
-                        "limit": 100,
-                        "data": historico_data.isoformat() if historico_data is not None else None,
-                        "op": historico_op.strip() or None,
-                    },
-                    timeout=30,
-                ).get("data") or []
-                daily_alerts = pd.DataFrame(daily_rows)
-                if not daily_alerts.empty:
-                    total_historico = int(daily_alerts.iloc[0].get("total_count", len(daily_alerts)) or len(daily_alerts))
-            except Exception as exc:
-                st.warning(f"Não foi possível carregar os alertas críticos diários: {exc}")
-
-        if daily_alerts.empty:
-            st.info("Nenhuma tratativa encontrada para os filtros informados.")
-        else:
-            for col in ["data_referencia", "data_separacao"]:
-                if col in daily_alerts.columns:
-                    daily_alerts[col] = pd.to_datetime(daily_alerts[col], errors="coerce").dt.date
-            if "encerrado_em" in daily_alerts.columns:
-                encerrado = pd.to_datetime(daily_alerts["encerrado_em"], errors="coerce", utc=True)
-                try:
-                    encerrado = encerrado.dt.tz_convert(TZ)
-                except Exception:
-                    pass
-                daily_alerts["encerrado_em"] = encerrado.dt.strftime("%d/%m/%Y %H:%M").fillna("")
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Registros encontrados", total_historico)
-            m2.metric("Exibindo", len(daily_alerts))
-            m3.metric("OPs na tela", daily_alerts["op"].astype(str).nunique())
-            if total_historico > len(daily_alerts):
-                st.caption("Exibindo os primeiros 100 registros. Use Data e OP para refinar a consulta.")
-
-            alert_cols = [
-                c for c in [
-                    "data_referencia", "op", "psy", "cliente", "produto",
-                    "data_separacao", "tipo_alerta", "tratativa_pcp",
-                    "operador_tratativa", "comentario_tratativa", "encerrado_em",
-                ] if c in daily_alerts.columns
-            ]
-            st.dataframe(
-                daily_alerts[alert_cols],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "data_referencia": st.column_config.DateColumn("Data do registro", format="DD/MM/YYYY"),
-                    "op": "OP",
-                    "psy": "PSY",
-                    "cliente": "Cliente",
-                    "produto": "Produto",
-                    "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
-                    "tipo_alerta": "Tipo de alerta",
-                    "tratativa_pcp": "Situação da tratativa",
-                    "operador_tratativa": "Operador",
-                    "comentario_tratativa": "Comentário",
-                    "encerrado_em": "Encerrado em",
-                },
+        if _tab_visible(history_tab_general):
+            st.markdown("#### Alertas críticos diários")
+            st.caption(
+                "Cada carga oficial registra as OPs que estavam com alerta crítico ativo naquele dia. "
+                "O histórico permanece mesmo após a conclusão da tratativa."
             )
 
-        if st.button("Preparar exportação completa das tratativas", key="exportar_alertas_preparar"):
-            try:
-                export_rows = _supabase_api(
-                    "list_daily_alerts",
-                    {"limit": 5000, "data": None, "op": None},
-                    timeout=45,
-                ).get("data") or []
-                export_detail = pd.DataFrame(export_rows)
-                if "total_count" in export_detail.columns:
-                    export_detail = export_detail.drop(columns=["total_count"])
-                excel_buffer = BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-                    export_detail.to_excel(writer, sheet_name="Tratativas", index=False)
-                st.session_state["_alertas_export_bytes"] = excel_buffer.getvalue()
-            except Exception as exc:
-                st.error(f"Não foi possível preparar a exportação: {exc}")
-
-        if st.session_state.get("_alertas_export_bytes"):
-            st.download_button(
-                "Baixar histórico completo em Excel",
-                data=st.session_state["_alertas_export_bytes"],
-                file_name=f"historico_tratativas_{today().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="exportar_alertas_diarios_v2",
-            )
-
-        st.divider()
-        st.markdown("#### Histórico e rastreabilidade")
-        hist = pd.DataFrame(st.session_state.history)
-        if hist.empty:
-            st.info("Ainda não existem eventos registrados nesta sessão.")
-        else:
-            event_options = sorted(hist["evento"].dropna().unique().tolist())
-            with st.form("history_session_filters_form", clear_on_submit=False, enter_to_submit=True):
-                c1, c2 = st.columns([1.4, 1])
-                search = c1.text_input(
-                    "Buscar OP / evento / detalhe",
-                    key="history_session_search",
+            with st.form("historico_alertas_filtros_form", clear_on_submit=False, enter_to_submit=True):
+                hf1, hf2 = st.columns([1, 1.6])
+                historico_data = hf1.date_input(
+                    "Data do registro",
+                    value=None,
+                    key="historico_alertas_data_v2",
+                    format="DD/MM/YYYY",
                 )
-                event_filter = c2.multiselect(
-                    "Tipo de evento",
-                    event_options,
-                    default=event_options,
-                    key="history_session_events",
+                historico_op = hf2.text_input(
+                    "Buscar OP",
+                    key="historico_alertas_op_v2",
+                    placeholder="Digite parte da OP",
                 )
                 search_col, clear_col = st.columns([14, 1])
-                search_col.form_submit_button("Pesquisar", type="primary", use_container_width=True)
+                historico_filter_submit = search_col.form_submit_button(
+                    "Pesquisar", type="primary", use_container_width=True
+                )
                 clear_col.form_submit_button(
                     "Limpar",
-                    key="filter_clear_group__history_session",
+                    key="filter_clear_group__historico_alertas",
                     help="Limpar todos os filtros desta aba",
                     use_container_width=True,
                     on_click=_clear_filter_group,
                     args=({
-                        "history_session_search": "",
-                        "history_session_events": [],
-                    }, ()),
+                        "historico_alertas_data_v2": None,
+                        "historico_alertas_op_v2": "",
+                    }, ("_alertas_export_bytes",)),
                 )
-            view = hist.copy()
-            if event_filter:
-                view = view[view["evento"].isin(event_filter)].copy()
-            if search.strip():
-                term = search.strip().lower()
-                mask = (
-                    view["op"].astype(str).str.lower().str.contains(term, na=False)
-                    | view["evento"].astype(str).str.lower().str.contains(term, na=False)
-                    | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
+            st.caption("A consulta é executada somente ao clicar em Pesquisar ou pressionar Enter.")
+
+            daily_alerts = pd.DataFrame()
+            total_historico = 0
+            if "_supabase_api" not in globals():
+                st.warning("Conexão com o Supabase indisponível para consultar o registro diário de alertas.")
+            else:
+                try:
+                    daily_rows = _cached_supabase_read(
+                        "list_daily_alerts",
+                        {
+                            "limit": 100,
+                            "data": historico_data.isoformat() if historico_data is not None else None,
+                            "op": historico_op.strip() or None,
+                        },
+                        timeout=30,
+                    ).get("data") or []
+                    daily_alerts = pd.DataFrame(daily_rows)
+                    if not daily_alerts.empty:
+                        total_historico = int(daily_alerts.iloc[0].get("total_count", len(daily_alerts)) or len(daily_alerts))
+                except Exception as exc:
+                    st.warning(f"Não foi possível carregar os alertas críticos diários: {exc}")
+
+            if daily_alerts.empty:
+                st.info("Nenhuma tratativa encontrada para os filtros informados.")
+            else:
+                for col in ["data_referencia", "data_separacao"]:
+                    if col in daily_alerts.columns:
+                        daily_alerts[col] = pd.to_datetime(daily_alerts[col], errors="coerce").dt.date
+                if "encerrado_em" in daily_alerts.columns:
+                    encerrado = pd.to_datetime(daily_alerts["encerrado_em"], errors="coerce", utc=True)
+                    try:
+                        encerrado = encerrado.dt.tz_convert(TZ)
+                    except Exception:
+                        pass
+                    daily_alerts["encerrado_em"] = encerrado.dt.strftime("%d/%m/%Y %H:%M").fillna("")
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Registros encontrados", total_historico)
+                m2.metric("Exibindo", len(daily_alerts))
+                m3.metric("OPs na tela", daily_alerts["op"].astype(str).nunique())
+                if total_historico > len(daily_alerts):
+                    st.caption("Exibindo os primeiros 100 registros. Use Data e OP para refinar a consulta.")
+
+                alert_cols = [
+                    c for c in [
+                        "data_referencia", "op", "psy", "cliente", "produto",
+                        "data_separacao", "tipo_alerta", "tratativa_pcp",
+                        "operador_tratativa", "comentario_tratativa", "encerrado_em",
+                    ] if c in daily_alerts.columns
+                ]
+                st.dataframe(
+                    daily_alerts[alert_cols],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "data_referencia": st.column_config.DateColumn("Data do registro", format="DD/MM/YYYY"),
+                        "op": "OP",
+                        "psy": "PSY",
+                        "cliente": "Cliente",
+                        "produto": "Produto",
+                        "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                        "tipo_alerta": "Tipo de alerta",
+                        "tratativa_pcp": "Situação da tratativa",
+                        "operador_tratativa": "Operador",
+                        "comentario_tratativa": "Comentário",
+                        "encerrado_em": "Encerrado em",
+                    },
                 )
-                view = view[mask]
-            st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
 
-        st.divider()
-        st.markdown("#### Importações realizadas")
-        imports = pd.DataFrame(st.session_state.imports)
-        if imports.empty:
-            st.caption("Nenhuma importação registrada nesta sessão.")
-        else:
-            st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
+            if st.button("Preparar exportação completa das tratativas", key="exportar_alertas_preparar"):
+                try:
+                    export_rows = _supabase_api(
+                        "list_daily_alerts",
+                        {"limit": 5000, "data": None, "op": None},
+                        timeout=45,
+                    ).get("data") or []
+                    export_detail = pd.DataFrame(export_rows)
+                    if "total_count" in export_detail.columns:
+                        export_detail = export_detail.drop(columns=["total_count"])
+                    excel_buffer = BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                        export_detail.to_excel(writer, sheet_name="Tratativas", index=False)
+                    st.session_state["_alertas_export_bytes"] = excel_buffer.getvalue()
+                except Exception as exc:
+                    st.error(f"Não foi possível preparar a exportação: {exc}")
 
-        st.info(
-            "O cronograma, a carga MRP, a base tratada de NFs, o andamento operacional dos materiais e o registro diário "
-            "de alertas críticos utilizam persistência no Supabase."
-        )
+            if st.session_state.get("_alertas_export_bytes"):
+                st.download_button(
+                    "Baixar histórico completo em Excel",
+                    data=st.session_state["_alertas_export_bytes"],
+                    file_name=f"historico_tratativas_{today().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="exportar_alertas_diarios_v2",
+                )
+
+            st.divider()
+            st.markdown("#### Histórico e rastreabilidade")
+            hist = pd.DataFrame(st.session_state.history)
+            if hist.empty:
+                st.info("Ainda não existem eventos registrados nesta sessão.")
+            else:
+                event_options = sorted(hist["evento"].dropna().unique().tolist())
+                with st.form("history_session_filters_form", clear_on_submit=False, enter_to_submit=True):
+                    c1, c2 = st.columns([1.4, 1])
+                    search = c1.text_input(
+                        "Buscar OP / evento / detalhe",
+                        key="history_session_search",
+                    )
+                    event_filter = c2.multiselect(
+                        "Tipo de evento",
+                        event_options,
+                        default=event_options,
+                        key="history_session_events",
+                    )
+                    search_col, clear_col = st.columns([14, 1])
+                    search_col.form_submit_button("Pesquisar", type="primary", use_container_width=True)
+                    clear_col.form_submit_button(
+                        "Limpar",
+                        key="filter_clear_group__history_session",
+                        help="Limpar todos os filtros desta aba",
+                        use_container_width=True,
+                        on_click=_clear_filter_group,
+                        args=({
+                            "history_session_search": "",
+                            "history_session_events": [],
+                        }, ()),
+                    )
+                view = hist.copy()
+                if event_filter:
+                    view = view[view["evento"].isin(event_filter)].copy()
+                if search.strip():
+                    term = search.strip().lower()
+                    mask = (
+                        view["op"].astype(str).str.lower().str.contains(term, na=False)
+                        | view["evento"].astype(str).str.lower().str.contains(term, na=False)
+                        | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
+                    )
+                    view = view[mask]
+                st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
+
+            st.divider()
+            st.markdown("#### Importações realizadas")
+            imports = pd.DataFrame(st.session_state.imports)
+            if imports.empty:
+                st.caption("Nenhuma importação registrada nesta sessão.")
+            else:
+                st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
+
+            st.info(
+                "O cronograma, a carga MRP, a base tratada de NFs, o andamento operacional dos materiais e o registro diário "
+                "de alertas críticos utilizam persistência no Supabase."
+            )
 
 
 
@@ -5029,13 +5048,16 @@ def _render_feeding_center():
         "Central de atualização das três bases operacionais. "
         "Selecione a aba correspondente para carregar Cronograma, MRP Consulta ou NFs."
     )
-    feed_cron, feed_mrp, feed_nf = st.tabs(["Cronograma", "MRP Consulta", "NFs"])
+    feed_cron, feed_mrp, feed_nf = _lazy_tabs(["Cronograma", "MRP Consulta", "NFs"], "alimentacao_tabs")
     with feed_cron:
-        _render_cronograma_feed()
+        if _tab_visible(feed_cron):
+            _render_cronograma_feed()
     with feed_mrp:
-        _render_mrp_feed()
+        if _tab_visible(feed_mrp):
+            _render_mrp_feed()
     with feed_nf:
-        _render_nf_feed()
+        if _tab_visible(feed_nf):
+            _render_nf_feed()
 
 
 def _infer_date_from_filename(name):
@@ -5434,241 +5456,245 @@ def _render_historical_loader():
 
 if globals().get("page") == "Histórico":
     with history_tab_materials:
-        st.markdown("#### Movimentações de materiais")
-        st.caption(
-            "Registro permanente das ações realizadas nos materiais. Este histórico não é apagado "
-            "quando uma nova carga do MRP substitui ou limpa a lista operacional atual."
-        )
-
-        material_history_actions = [
-            "Todas",
-            "MARCADO COMO SEPARADO",
-            "PROBLEMA REGISTRADO",
-            "PRIORIDADE SOLICITADA",
-            "PRIORIDADE REMOVIDA",
-            "MARCADO COMO PENDENTE",
-            "COMENTÁRIO",
-        ]
-
-        with st.form("material_history_filter_form", clear_on_submit=False, enter_to_submit=True):
-            mh1, mh2 = st.columns(2)
-            mh_project = mh1.text_input("Projeto / OP", key="material_history_project")
-            mh_product = mh2.text_input("Produto", key="material_history_product")
-            mh3, mh4 = st.columns(2)
-            mh_action = mh3.selectbox(
-                "Ação",
-                material_history_actions,
-                index=0,
-                key="material_history_action",
-            )
-            mh_responsible = mh4.text_input("Responsável", key="material_history_responsible")
-            mh5, mh6 = st.columns(2)
-            mh_start = mh5.date_input(
-                "Data inicial",
-                value=None,
-                format="DD/MM/YYYY",
-                key="material_history_start",
-            )
-            mh_end = mh6.date_input(
-                "Data final",
-                value=None,
-                format="DD/MM/YYYY",
-                key="material_history_end",
-            )
-            search_col, clear_col = st.columns([14, 1])
-            mh_submit = search_col.form_submit_button(
-                "Pesquisar", type="primary", use_container_width=True
-            )
-            clear_col.form_submit_button(
-                "Limpar",
-                key="filter_clear_group__material_history",
-                help="Limpar todos os filtros desta aba",
-                use_container_width=True,
-                on_click=_clear_filter_group,
-                args=({
-                    "material_history_project": "",
-                    "material_history_product": "",
-                    "material_history_action": "Todas",
-                    "material_history_responsible": "",
-                    "material_history_start": None,
-                    "material_history_end": None,
-                }, ("_material_history_rows",)),
+        if _tab_visible(history_tab_materials):
+            st.markdown("#### Movimentações de materiais")
+            st.caption(
+                "Registro permanente das ações realizadas nos materiais. Este histórico não é apagado "
+                "quando uma nova carga do MRP substitui ou limpa a lista operacional atual."
             )
 
-        if "_material_history_rows" not in st.session_state or mh_submit:
-            try:
-                history_response = _supabase_api(
-                    "material_history",
-                    {
-                        "limit": 10000,
-                        "projeto": mh_project.strip() or None,
-                        "produto": mh_product.strip() or None,
-                        "acao": None if mh_action == "Todas" else mh_action,
-                        "responsavel": mh_responsible.strip() or None,
-                        "data_inicio": mh_start.isoformat() if mh_start is not None else None,
-                        "data_fim": mh_end.isoformat() if mh_end is not None else None,
-                    },
-                    timeout=45,
+            material_history_actions = [
+                "Todas",
+                "MARCADO COMO SEPARADO",
+                "PROBLEMA REGISTRADO",
+                "PRIORIDADE SOLICITADA",
+                "PRIORIDADE REMOVIDA",
+                "MARCADO COMO PENDENTE",
+                "COMENTÁRIO",
+            ]
+
+            with st.form("material_history_filter_form", clear_on_submit=False, enter_to_submit=True):
+                mh1, mh2 = st.columns(2)
+                mh_project = mh1.text_input("Projeto / OP", key="material_history_project")
+                mh_product = mh2.text_input("Produto", key="material_history_product")
+                mh3, mh4 = st.columns(2)
+                mh_action = mh3.selectbox(
+                    "Ação",
+                    material_history_actions,
+                    index=0,
+                    key="material_history_action",
                 )
-                st.session_state["_material_history_rows"] = history_response.get("data") or []
-            except Exception as exc:
-                st.error(f"Não foi possível consultar o histórico de materiais: {exc}")
-                st.session_state["_material_history_rows"] = []
+                mh_responsible = mh4.text_input("Responsável", key="material_history_responsible")
+                mh5, mh6 = st.columns(2)
+                mh_start = mh5.date_input(
+                    "Data inicial",
+                    value=None,
+                    format="DD/MM/YYYY",
+                    key="material_history_start",
+                )
+                mh_end = mh6.date_input(
+                    "Data final",
+                    value=None,
+                    format="DD/MM/YYYY",
+                    key="material_history_end",
+                )
+                search_col, clear_col = st.columns([14, 1])
+                mh_submit = search_col.form_submit_button(
+                    "Pesquisar", type="primary", use_container_width=True
+                )
+                clear_col.form_submit_button(
+                    "Limpar",
+                    key="filter_clear_group__material_history",
+                    help="Limpar todos os filtros desta aba",
+                    use_container_width=True,
+                    on_click=_clear_filter_group,
+                    args=({
+                        "material_history_project": "",
+                        "material_history_product": "",
+                        "material_history_action": "Todas",
+                        "material_history_responsible": "",
+                        "material_history_start": None,
+                        "material_history_end": None,
+                    }, ("_material_history_rows",)),
+                )
 
-        material_history_df = pd.DataFrame(st.session_state.get("_material_history_rows") or [])
-        if material_history_df.empty:
-            st.info("Nenhuma movimentação de material encontrada para os filtros informados.")
-        else:
-            history_dates = pd.to_datetime(
-                material_history_df.get("registrado_em"),
-                errors="coerce",
-                utc=True,
-            )
-            try:
-                history_dates = history_dates.dt.tz_convert("America/Sao_Paulo")
-            except Exception:
-                pass
+            if "_material_history_rows" not in st.session_state or mh_submit:
+                try:
+                    history_response = _supabase_api(
+                        "material_history",
+                        {
+                            "limit": 10000,
+                            "projeto": mh_project.strip() or None,
+                            "produto": mh_product.strip() or None,
+                            "acao": None if mh_action == "Todas" else mh_action,
+                            "responsavel": mh_responsible.strip() or None,
+                            "data_inicio": mh_start.isoformat() if mh_start is not None else None,
+                            "data_fim": mh_end.isoformat() if mh_end is not None else None,
+                        },
+                        timeout=45,
+                    )
+                    st.session_state["_material_history_rows"] = history_response.get("data") or []
+                except Exception as exc:
+                    st.error(f"Não foi possível consultar o histórico de materiais: {exc}")
+                    st.session_state["_material_history_rows"] = []
 
-            material_history_view = pd.DataFrame({
-                "Data/Hora": history_dates.dt.strftime("%d/%m/%Y %H:%M").fillna(""),
-                "Projeto": material_history_df.get("projeto", ""),
-                "Produto": material_history_df.get("produto", ""),
-                "Ação": material_history_df.get("acao", ""),
-                "Status anterior": material_history_df.get("status_anterior", ""),
-                "Status novo": material_history_df.get("status_novo", ""),
-                "Responsável": material_history_df.get("responsavel", ""),
-                "Comentário": material_history_df.get("comentario", ""),
-            })
+            material_history_df = pd.DataFrame(st.session_state.get("_material_history_rows") or [])
+            if material_history_df.empty:
+                st.info("Nenhuma movimentação de material encontrada para os filtros informados.")
+            else:
+                history_dates = pd.to_datetime(
+                    material_history_df.get("registrado_em"),
+                    errors="coerce",
+                    utc=True,
+                )
+                try:
+                    history_dates = history_dates.dt.tz_convert("America/Sao_Paulo")
+                except Exception:
+                    pass
 
-            hm1, hm2, hm3, hm4 = st.columns(4)
-            hm1.metric("Registros", len(material_history_view))
-            hm2.metric(
-                "Separações",
-                int(material_history_view["Ação"].eq("MARCADO COMO SEPARADO").sum()),
-            )
-            hm3.metric(
-                "Problemas",
-                int(material_history_view["Ação"].eq("PROBLEMA REGISTRADO").sum()),
-            )
-            hm4.metric(
-                "Comentários",
-                int(material_history_view["Ação"].eq("COMENTÁRIO").sum()),
-            )
+                material_history_view = pd.DataFrame({
+                    "Data/Hora": history_dates.dt.strftime("%d/%m/%Y %H:%M").fillna(""),
+                    "Projeto": material_history_df.get("projeto", ""),
+                    "Produto": material_history_df.get("produto", ""),
+                    "Ação": material_history_df.get("acao", ""),
+                    "Status anterior": material_history_df.get("status_anterior", ""),
+                    "Status novo": material_history_df.get("status_novo", ""),
+                    "Responsável": material_history_df.get("responsavel", ""),
+                    "Comentário": material_history_df.get("comentario", ""),
+                })
 
-            st.dataframe(
-                material_history_view,
-                use_container_width=True,
-                hide_index=True,
-                height=560,
-            )
+                hm1, hm2, hm3, hm4 = st.columns(4)
+                hm1.metric("Registros", len(material_history_view))
+                hm2.metric(
+                    "Separações",
+                    int(material_history_view["Ação"].eq("MARCADO COMO SEPARADO").sum()),
+                )
+                hm3.metric(
+                    "Problemas",
+                    int(material_history_view["Ação"].eq("PROBLEMA REGISTRADO").sum()),
+                )
+                hm4.metric(
+                    "Comentários",
+                    int(material_history_view["Ação"].eq("COMENTÁRIO").sum()),
+                )
 
-            material_history_excel = BytesIO()
-            with pd.ExcelWriter(material_history_excel, engine="openpyxl") as writer:
-                material_history_view.to_excel(writer, sheet_name="Movimentacoes_Materiais", index=False)
-            st.download_button(
-                "Exportar histórico filtrado em Excel",
-                data=material_history_excel.getvalue(),
-                file_name=f"historico_materiais_{today().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="export_material_history",
-            )
+                st.dataframe(
+                    material_history_view,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=560,
+                )
+
+                material_history_excel = BytesIO()
+                with pd.ExcelWriter(material_history_excel, engine="openpyxl") as writer:
+                    material_history_view.to_excel(writer, sheet_name="Movimentacoes_Materiais", index=False)
+                st.download_button(
+                    "Exportar histórico filtrado em Excel",
+                    data=material_history_excel.getvalue(),
+                    file_name=f"historico_materiais_{today().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="export_material_history",
+                )
 
     with history_tab_users:
-        st.markdown("#### Gestão de usuários")
-        st.caption(
-            "Cadastre os nomes que poderão ser selecionados como operador nas ações do aplicativo. "
-            "A lista fica salva no Supabase e permanece disponível nas próximas sessões."
-        )
-
-        user_success = st.session_state.pop("_user_management_success", None)
-        if user_success:
-            st.success(user_success)
-
-        with st.form("novo_operador_form", clear_on_submit=True):
-            novo_operador = st.text_input(
-                "Nome do usuário",
-                placeholder="Ex.: João Silva",
-                key="novo_operador_nome",
-            )
-            cadastrar_operador = st.form_submit_button(
-                "Cadastrar usuário",
-                use_container_width=True,
+        if _tab_visible(history_tab_users):
+            st.markdown("#### Gestão de usuários")
+            st.caption(
+                "Cadastre os nomes que poderão ser selecionados como operador nas ações do aplicativo. "
+                "A lista fica salva no Supabase e permanece disponível nas próximas sessões."
             )
 
-        if cadastrar_operador:
-            nome_limpo = " ".join(str(novo_operador or "").split())
-            if len(nome_limpo) < 2:
-                st.warning("Informe um nome válido antes de cadastrar.")
+            user_success = st.session_state.pop("_user_management_success", None)
+            if user_success:
+                st.success(user_success)
+
+            with st.form("novo_operador_form", clear_on_submit=True):
+                novo_operador = st.text_input(
+                    "Nome do usuário",
+                    placeholder="Ex.: João Silva",
+                    key="novo_operador_nome",
+                )
+                cadastrar_operador = st.form_submit_button(
+                    "Cadastrar usuário",
+                    use_container_width=True,
+                )
+
+            if cadastrar_operador:
+                nome_limpo = " ".join(str(novo_operador or "").split())
+                if len(nome_limpo) < 2:
+                    st.warning("Informe um nome válido antes de cadastrar.")
+                else:
+                    try:
+                        result = _supabase_api(
+                            "create_operator",
+                            {"nome": nome_limpo},
+                            timeout=20,
+                        ).get("data") or {}
+                        st.session_state["_operadores_sync"] = False
+                        _load_operator_options(force=True)
+                        st.session_state["_user_management_success"] = f"Usuário {nome_limpo} cadastrado."
+                        st.rerun()
+                    except Exception as exc:
+                        msg = str(exc)
+                        if "OPERADOR_JA_EXISTE" in msg:
+                            st.warning("Já existe um usuário cadastrado com esse nome.")
+                        else:
+                            st.error(f"Não foi possível cadastrar o usuário: {msg}")
+
+            operadores = _load_operator_options()
+            if not operadores:
+                st.info("Nenhum usuário operacional cadastrado.")
             else:
-                try:
-                    result = _supabase_api(
-                        "create_operator",
-                        {"nome": nome_limpo},
-                        timeout=20,
-                    ).get("data") or {}
-                    st.session_state["_operadores_sync"] = False
-                    _load_operator_options(force=True)
-                    st.session_state["_user_management_success"] = f"Usuário {nome_limpo} cadastrado."
-                    st.rerun()
-                except Exception as exc:
-                    msg = str(exc)
-                    if "OPERADOR_JA_EXISTE" in msg:
-                        st.warning("Já existe um usuário cadastrado com esse nome.")
-                    else:
-                        st.error(f"Não foi possível cadastrar o usuário: {msg}")
+                operadores_df = pd.DataFrame(operadores)
+                usuarios_view = pd.DataFrame({
+                    "Usuário": operadores_df.get("nome", ""),
+                })
+                st.dataframe(
+                    usuarios_view,
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
-        operadores = _load_operator_options()
-        if not operadores:
-            st.info("Nenhum usuário operacional cadastrado.")
-        else:
-            operadores_df = pd.DataFrame(operadores)
-            usuarios_view = pd.DataFrame({
-                "Usuário": operadores_df.get("nome", ""),
-            })
-            st.dataframe(
-                usuarios_view,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            st.markdown("##### Excluir usuário")
-            ids_por_nome = {
-                str(r.get("nome") or "").strip(): int(r.get("id"))
-                for r in operadores
-                if str(r.get("nome") or "").strip() and r.get("id") is not None
-            }
-            nome_excluir = st.selectbox(
-                "Selecione o usuário",
-                ["Selecione"] + list(ids_por_nome.keys()),
-                key="usuario_excluir_select",
-            )
-            if st.button(
-                "Excluir usuário",
-                disabled=nome_excluir == "Selecione",
-                key="usuario_excluir_botao",
-            ):
-                try:
-                    _supabase_api(
-                        "delete_operator",
-                        {"id": ids_por_nome[nome_excluir]},
-                        timeout=20,
-                    )
-                    if _session_operator() == nome_excluir:
-                        st.session_state.pop("_operador_sessao", None)
-                    st.session_state["_operadores_sync"] = False
-                    _load_operator_options(force=True)
-                    for _k in ["core_bulk_user", "pcp_bulk_responsavel", "material_bulk_responsavel"]:
-                        st.session_state.pop(_k, None)
-                    st.session_state["_user_management_success"] = f"Usuário {nome_excluir} excluído."
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Não foi possível excluir o usuário: {exc}")
+                st.markdown("##### Excluir usuário")
+                ids_por_nome = {
+                    str(r.get("nome") or "").strip(): int(r.get("id"))
+                    for r in operadores
+                    if str(r.get("nome") or "").strip() and r.get("id") is not None
+                }
+                nome_excluir = st.selectbox(
+                    "Selecione o usuário",
+                    ["Selecione"] + list(ids_por_nome.keys()),
+                    key="usuario_excluir_select",
+                )
+                if st.button(
+                    "Excluir usuário",
+                    disabled=nome_excluir == "Selecione",
+                    key="usuario_excluir_botao",
+                ):
+                    try:
+                        _supabase_api(
+                            "delete_operator",
+                            {"id": ids_por_nome[nome_excluir]},
+                            timeout=20,
+                        )
+                        if _session_operator() == nome_excluir:
+                            st.session_state.pop("_operador_sessao", None)
+                        st.session_state["_operadores_sync"] = False
+                        _load_operator_options(force=True)
+                        for _k in ["core_bulk_user", "pcp_bulk_responsavel", "material_bulk_responsavel"]:
+                            st.session_state.pop(_k, None)
+                        st.session_state["_user_management_success"] = f"Usuário {nome_excluir} excluído."
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível excluir o usuário: {exc}")
 
     with history_tab_archive:
-        _render_historical_loader()
+        if _tab_visible(history_tab_archive):
+            _render_historical_loader()
     with history_tab_feed:
-        _render_feeding_center()
+        if _tab_visible(history_tab_feed):
+            _render_feeding_center()
 
 _sidebar_operator = _session_operator()
 if _sidebar_operator:
