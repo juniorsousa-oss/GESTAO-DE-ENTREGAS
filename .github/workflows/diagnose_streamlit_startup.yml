@@ -1,0 +1,37 @@
+name: Diagnose Streamlit startup
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose_streamlit_startup.yml'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Syntax and Streamlit smoke tests
+        run: |
+          python -m py_compile streamlit_app.py
+          python - <<'PY'
+          import streamlit
+          print('STREAMLIT_VERSION',streamlit.__version__)
+          from streamlit.testing.v1 import AppTest
+          t=AppTest.from_file('streamlit_app.py',default_timeout=100)
+          try:
+              t.run()
+          except Exception as e:
+              print('SMOKE_RUN_EXCEPTION',repr(e))
+              raise
+          print('APPTEST_EXCEPTION_COUNT',len(t.exception))
+          for e in t.exception:
+              print('APPTEST_EXCEPTION',e.message)
+          for e in t.error:
+              print('APPTEST_ERROR',e.message)
+          assert len(t.exception)==0, 'Streamlit app failed during startup'
+          print('APPTEST_STARTUP_OK')
+          PY
