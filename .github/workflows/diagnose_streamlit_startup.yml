@@ -89,7 +89,7 @@ jobs:
               for page in ('Cronograma','Materiais','NFs','Histórico'):
                   t.sidebar.radio[0].set_value(page).run()
                   print('SCREEN_'+page+'_EXCEPTIONS',[e.message for e in t.exception])
-                  print('SCREEN_'+page+'_ERRORS',[e.message for e in t.error])
+                  print('SCREEN_'+page+'_ERRORS',[str(getattr(e, 'value', e)) for e in t.error])
                   assert not t.exception, page+' raised an exception'
           print('MOCKED_SUPABASE_SCREENS_OK',seen)
           PY
