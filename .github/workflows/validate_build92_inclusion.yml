@@ -1,0 +1,55 @@
+name: Validate Build 92 inclusion date
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate_build92_inclusion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check code and date logic
+        run: |
+          python -m py_compile streamlit_app.py
+          python - <<'PY'
+          import ast
+          import pandas as pd
+          from datetime import date
+
+          source = open("streamlit_app.py",encoding="utf-8").read()
+          tree = ast.parse(source)
+          helper = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="_normalizar_datas_cronograma")
+          module = ast.Module(body=[helper],type_ignores=[])
+          namespace = {"pd":pd}
+          exec(compile(ast.fix_missing_locations(module),"<date-helper>","exec"),namespace)
+          normalize = namespace["_normalizar_datas_cronograma"]
+          frame = pd.DataFrame([
+             {"op":"26009203003","primeira_aparicao":"2026-09-21","ultima_alteracao_cronograma":None},
+             {"op":"with_change","primeira_aparicao":"2026-09-18","ultima_alteracao_cronograma":"2026-09-22"},
+             {"op":"old","primeira_aparicao":"2026-09-12","ultima_alteracao_cronograma":None},
+          ])
+          out = normalize(frame)
+          assert out.loc[0,"ultima_alteracao_cronograma"]==date(2026,9,21)
+          assert out.loc[1,"ultima_alteracao_cronograma"]==date(2026,9,22)
+          assert out.loc[2,"ultima_alteracao_cronograma"]==date(2026,9,12)
+          assert source.count("_normalizar_datas_cronograma(pd.DataFrame(rows))")==2
+          assert "APP_BUILD = 92" in source
+          print("BUILD_92_DATE_TESTS_PASSED")
+          PY
+      - name: Check Streamlit startup
+        run: |
+          pip install -q -r requirements.txt
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          app=AppTest.from_file("streamlit_app.py",default_timeout=45).run()
+          assert not app.exception,[e.message for e in app.exception]
+          print("BUILD_92_STARTUP_TEST_PASSED")
+          PY
