@@ -276,6 +276,21 @@ def _clear_shared_read_cache():
 
 
 
+def _normalizar_datas_cronograma(frame):
+    """Exibe a inclusão quando ainda não houve alteração posterior da separação."""
+    for col in ["data_separacao", "primeira_aparicao", "ultima_alteracao_cronograma", "ultima_alteracao_equipe"]:
+        if col in frame.columns:
+            frame[col] = pd.to_datetime(frame[col], errors="coerce").dt.date
+    if "primeira_aparicao" in frame.columns:
+        if "ultima_alteracao_cronograma" in frame.columns:
+            frame["ultima_alteracao_cronograma"] = (
+                frame["ultima_alteracao_cronograma"].combine_first(frame["primeira_aparicao"])
+            )
+        else:
+            frame["ultima_alteracao_cronograma"] = frame["primeira_aparicao"]
+    return frame
+
+
 def _sync_bootstrap_from_supabase(force=False):
     if not _supabase_anon_key():
         return False
@@ -295,11 +310,8 @@ def _sync_bootstrap_from_supabase(force=False):
             payload = {}
 
         rows = payload.get("cronograma") or []
-        full = pd.DataFrame(rows)
+        full = _normalizar_datas_cronograma(pd.DataFrame(rows))
         if not full.empty:
-            for col in ["data_separacao", "ultima_alteracao_cronograma", "ultima_alteracao_equipe"]:
-                if col in full.columns:
-                    full[col] = pd.to_datetime(full[col], errors="coerce").dt.date
             st.session_state["_entrega_supabase_current_full"] = full.copy()
 
             snapshot = {}
@@ -380,10 +392,7 @@ def _sync_current_from_supabase(force=False):
             st.session_state["_entrega_supabase_sync"] = True
             return True
 
-        full = pd.DataFrame(rows)
-        for col in ["data_separacao", "ultima_alteracao_cronograma", "ultima_alteracao_equipe"]:
-            if col in full.columns:
-                full[col] = pd.to_datetime(full[col], errors="coerce").dt.date
+        full = _normalizar_datas_cronograma(pd.DataFrame(rows))
         st.session_state["_entrega_supabase_current_full"] = full.copy()
 
         snapshot = {}
@@ -475,7 +484,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 91
+APP_BUILD = 92
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1728,7 +1737,7 @@ def _dataframe_ui(self, data=None, *args, **kwargs):
                 data = data.merge(lookup, on="op", how="left")
                 cfg = dict(kwargs.get("column_config") or {})
                 cfg["ultima_alteracao_cronograma"] = st.column_config.DateColumn(
-                    "Última alteração", format="DD/MM/YYYY"
+                    "Última inclusão/alteração", format="DD/MM/YYYY"
                 )
                 kwargs["column_config"] = cfg
     except Exception:
@@ -3018,7 +3027,7 @@ with st.sidebar:
         f'''<div class="sidebar-info-card">
             <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
             <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 91
+            <b>Build</b><br>APP core build 92
         </div>''',
         unsafe_allow_html=True,
     )
@@ -3260,7 +3269,7 @@ if page == "Dashboard":
                 "status": "Status",
                 "responsavel_separacao": "Responsável separação",
                 "ultimo_comentario": "Comentário",
-                "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
+                "ultima_alteracao_cronograma": st.column_config.DateColumn("Última inclusão/alteração", format="DD/MM/YYYY"),
                 "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
                 "sinalizacao": "Sinalização",
                 "status_projeto_mrp": "Status MRP",
@@ -3465,7 +3474,7 @@ elif page == "Cronograma":
                             "pendencias_com_saldo": st.column_config.NumberColumn("Pendências com saldo", format="%d"),
                             "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
                             "status": "Status",
-                            "ultima_alteracao_cronograma": st.column_config.DateColumn("Última alt. cronograma", format="DD/MM/YYYY"),
+                            "ultima_alteracao_cronograma": st.column_config.DateColumn("Última inclusão/alteração", format="DD/MM/YYYY"),
                             "ultima_alteracao_equipe": st.column_config.DateColumn("Última alt. separação", format="DD/MM/YYYY"),
                             "sinalizacao": "Sinalização",
                             "status_projeto_mrp": "Status MRP",
@@ -3596,7 +3605,7 @@ elif page == "Cronograma":
                             Produto: {project['produto']} &nbsp; • &nbsp; Data de Separação: {fmt_date(project['data_separacao'])}<br>
                             Responsável separação: {project.get('responsavel_separacao') or '—'}<br>
                             Comentário: {project.get('ultimo_comentario') or '—'}<br>
-                            Última alt. cronograma: {fmt_date(project.get('ultima_alteracao_cronograma'))} &nbsp; • &nbsp;
+                            Última inclusão/alteração: {fmt_date(project.get('ultima_alteracao_cronograma'))} &nbsp; • &nbsp;
                             Última alt. separação: {fmt_date(project.get('ultima_alteracao_equipe'))}
                           </div>
                         </div>
