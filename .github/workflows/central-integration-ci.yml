@@ -1,0 +1,41 @@
+name: Validar Central Gestão Entregas
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'streamlit_app.py'
+      - 'central_entregas_data.py'
+      - 'requirements.txt'
+      - '.github/workflows/central-integration-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+      - name: Compilar integração
+        run: |
+          python -m py_compile streamlit_app.py central_entregas_data.py
+      - name: Validar pontos da Central
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          app = Path("streamlit_app.py").read_text(encoding="utf-8")
+          central = Path("central_entregas_data.py").read_text(encoding="utf-8")
+          assert "def _sync_central_operational_feeds" in app
+          assert '"central_current_load"' in app
+          assert '"relatorio_mrp"' in app
+          assert '"for022"' in app
+          assert '"nf"' in app
+          assert 'with st.expander("CONTINGÊNCIA"' in app
+          assert "bundle_state" in central
+          assert "visual_get" in central
+          print("CENTRAL_ENTREGAS_COMPILE_OK")
+          PY
