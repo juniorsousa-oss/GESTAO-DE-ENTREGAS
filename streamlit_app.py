@@ -3141,6 +3141,18 @@ section[data-testid="stSidebar"] .block-container{padding-top:1.6rem!important;p
 .sidebar-brand-sub{margin-top:.18rem!important;font-size:.75rem!important;color:#6b7280!important}
 .sidebar-section-label{margin:.25rem 0 .45rem!important;color:#374151!important;font-size:.76rem!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.055em!important}
 .sidebar-info-card{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:10px!important;padding:.75rem .85rem!important;color:#6b7280!important;font-size:.76rem!important;line-height:1.55!important;text-transform:uppercase!important}
+.sidebar-status-card{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:10px!important;padding:.82rem .9rem!important;color:#6b7280!important;line-height:1.45!important}
+.sidebar-status-name{font-size:.7rem!important;font-weight:900!important;color:#64748b!important;text-transform:uppercase!important;letter-spacing:.025em!important}
+.sidebar-status-value{margin-top:.18rem!important;font-size:.86rem!important;font-weight:900!important;color:#111827!important;text-transform:uppercase!important}
+.sidebar-status-meta{margin-top:.28rem!important;color:#6b7280!important;font-size:.68rem!important;line-height:1.45!important;text-transform:uppercase!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"]{margin:0 0 .34rem 0!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button{position:relative!important;width:100%!important;min-height:42px!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important;padding:.56rem .72rem .56rem calc(.88rem + 10px)!important;border-radius:10px!important;font-size:.83rem!important;font-weight:600!important;line-height:1.2!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button > div{width:100%!important;text-align:left!important;justify-content:flex-start!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button p{width:100%!important;margin:0!important;text-align:left!important;text-transform:uppercase!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-secondary"]{background:transparent!important;border:1px solid transparent!important;color:#374151!important;box-shadow:none!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-secondary"]:hover{background:#f8fafc!important;border-color:#e5e7eb!important;color:#111827!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-primary"]{background:#111827!important;border:1px solid #111827!important;color:#fff!important;box-shadow:0 5px 14px rgba(17,24,39,.14)!important;font-weight:700!important}
+section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-primary"]::before{content:"";position:absolute;left:.42rem;top:50%;width:4px;height:20px;border-radius:999px;background:#ef4444;transform:translateY(-50%)}
 section[data-testid="stSidebar"] div[role="radiogroup"]{display:flex!important;flex-direction:column!important;gap:.34rem!important}
 section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
 section[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] + div{position:absolute!important;opacity:0!important;pointer-events:none!important}
@@ -3186,6 +3198,53 @@ button[kind="primary"],button[data-testid="stBaseButton-primary"]{background:#11
     unsafe_allow_html=True,
 )
 
+_ENTREGA_NAV_PAGES = ["Dashboard", "Cronograma", "Materiais", "NFs", "Histórico"]
+
+
+def _set_entrega_navigation(target):
+    if target in _ENTREGA_NAV_PAGES:
+        st.session_state["main_navigation"] = target
+
+
+def _sidebar_operational_status():
+    states = _central_sync_state()
+    keys = ("for022", "relatorio_mrp", "nf")
+    ok_count = sum(
+        1
+        for key in keys
+        if str((states.get(key) or {}).get("status") or "").upper() == "ATUALIZADO"
+    )
+    has_error = any(
+        str((states.get(key) or {}).get("status") or "").upper() == "ERRO"
+        for key in keys
+    )
+    if ok_count == len(keys):
+        status = "ATUALIZADO"
+    elif has_error:
+        status = "ATENÇÃO"
+    else:
+        status = "AGUARDANDO"
+
+    latest = None
+    for key in keys:
+        value = (states.get(key) or {}).get("synced_at")
+        if not value:
+            continue
+        stamp = pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.isna(stamp):
+            continue
+        if latest is None or stamp > latest:
+            latest = stamp
+    latest_txt = _fmt_feed_datetime(latest.isoformat()) if latest is not None else "—"
+    return status, latest_txt, ok_count, len(keys)
+
+
+page = str(st.session_state.get("main_navigation") or "Dashboard")
+if page not in _ENTREGA_NAV_PAGES:
+    page = "Dashboard"
+    st.session_state["main_navigation"] = page
+
+
 with st.sidebar:
     st.markdown(
         '''<div class="sidebar-brand">
@@ -3196,12 +3255,26 @@ with st.sidebar:
     )
 
     st.markdown('<div class="sidebar-section-label">NAVEGAÇÃO</div>', unsafe_allow_html=True)
-    page = st.radio(
-        "Página",
-        ["Dashboard", "Cronograma", "Materiais", "NFs", "Histórico"],
-        label_visibility="collapsed",
-        key="main_navigation",
-        format_func=lambda item: str(item).upper(),
+    for _nav_page in _ENTREGA_NAV_PAGES:
+        st.button(
+            _nav_page.upper(),
+            key=f"entrega_nav_{_nav_page.lower().replace(' ', '_')}",
+            type="primary" if _nav_page == page else "secondary",
+            use_container_width=True,
+            on_click=_set_entrega_navigation,
+            args=(_nav_page,),
+        )
+
+    st.divider()
+    _sidebar_status, _sidebar_status_time, _sidebar_status_ok, _sidebar_status_total = _sidebar_operational_status()
+    st.markdown('<div class="sidebar-section-label">STATUS GERAL</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'''<div class="sidebar-status-card">
+            <div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>
+            <div class="sidebar-status-value">{_sidebar_status}</div>
+            <div class="sidebar-status-meta">{_sidebar_status_time} · {_sidebar_status_ok}/{_sidebar_status_total} FONTES OK</div>
+        </div>''',
+        unsafe_allow_html=True,
     )
 
     st.divider()
@@ -3424,9 +3497,6 @@ if page == "Dashboard":
     dashboard_view["pendencias_com_saldo"] = (
         dashboard_view["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
     )
-
-    section_title = "PRÓXIMAS SEPARAÇÕES" if active_filter == "Projetos" else f"PROJETOS · {active_filter}"
-    st.markdown(f"#### {section_title}")
 
     if schedule.empty:
         st.info("Carregue o cronograma para iniciar.")
