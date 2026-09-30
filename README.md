@@ -37,3 +37,23 @@ streamlit run streamlit_app.py
 ## Observação
 Nesta primeira versão os dados ficam em `st.session_state`, ou seja, servem para validar a lógica e o layout.
 Na próxima etapa, após aprovação, a persistência deve ser conectada ao Supabase.
+
+
+## Integração automática com Controle de NFs
+
+O módulo **Materiais** alimenta automaticamente o aplicativo CONTROLE-DE-NFS.
+
+Fonte operacional:
+- menu **Materiais**;
+- filtro equivalente a **PENDÊNCIA SEM ESTOQUE**;
+- somente OPs classificadas pelo Dashboard como **Com pendências**;
+- campos enviados ao Controle de NFs: **Projeto**, **Produto** e **Data CM**.
+
+A sincronização é executada automaticamente no backend após:
+- nova carga oficial do Cronograma;
+- nova carga do MRP Consulta;
+- alterações de status que possam modificar a classificação operacional da OP.
+
+A API utiliza a Edge Function `nf-materiais-api`. O endpoint de sincronização não aceita linhas arbitrárias: ele recompõe a carga diretamente das tabelas oficiais do Gestão de Entregas, reduzindo o risco de injeção de dados externos.
+
+O Excel filtrado continua disponível para conferência/contingência, mas deixa de ser necessário para alimentar o CONTROLE-DE-NFS.
