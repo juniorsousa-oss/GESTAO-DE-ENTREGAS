@@ -2693,8 +2693,6 @@ def _sync_central_operational_feeds():
         st.rerun()
 
 
-_sync_central_operational_feeds()
-
 def _nf_rows_to_frame(rows):
     frame = pd.DataFrame(rows or [])
     if frame.empty:
@@ -2997,6 +2995,8 @@ def _style_operational_rows(df):
             css = ""
         return [css] * len(row)
     return df.style.apply(style_row, axis=1)
+
+_sync_central_operational_feeds()
 
 logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
 default_logo_data = ""
