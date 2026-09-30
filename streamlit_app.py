@@ -3040,6 +3040,28 @@ def _clear_filter_group(values, extra_keys=()):
         st.session_state.pop(extra, None)
 
 
+def section_band(kicker, title, note=""):
+    note_html = (
+        f'<div class="section-band-note">{note}</div>'
+        if str(note or "").strip()
+        else ""
+    )
+    st.markdown(
+        f"""
+        <div class="section-band">
+            <div class="section-band-kicker">{kicker}</div>
+            <div class="section-band-title">{title}</div>
+            {note_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def topic_divider():
+    st.markdown('<div class="topic-divider"></div>', unsafe_allow_html=True)
+
+
 st.markdown(
     """
     <style>
@@ -3105,16 +3127,75 @@ def _logo_admin_password_valid(candidate):
 if st.session_state.pop("_clear_logo_admin_password", False):
     st.session_state.pop("_logo_admin_password_input", None)
 
+st.markdown(
+    """
+<style>
+/* SETTA FINAL — PADRÃO CONTROLE DE NFS */
+[data-testid="stAppViewContainer"]{background:#f4f7fb!important}
+[data-testid="stHeader"]{background:rgba(255,255,255,.96)!important}
+.block-container{max-width:1780px!important;padding-top:3.2rem!important;padding-left:2.7rem!important;padding-right:2.7rem!important;padding-bottom:3rem!important;width:100%!important}
+section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e8ebf0!important;min-width:336px!important;max-width:336px!important;width:336px!important}
+section[data-testid="stSidebar"] .block-container{padding-top:1.6rem!important;padding-left:1rem!important;padding-right:1rem!important}
+.sidebar-brand{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:12px!important;padding:.9rem 1rem!important;margin:0 0 1.05rem 0!important}
+.sidebar-brand-title{font-size:.92rem!important;font-weight:800!important;color:#111827!important;letter-spacing:-.01em!important;text-transform:uppercase!important}
+.sidebar-brand-sub{margin-top:.18rem!important;font-size:.75rem!important;color:#6b7280!important}
+.sidebar-section-label{margin:.25rem 0 .45rem!important;color:#374151!important;font-size:.76rem!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.055em!important}
+.sidebar-info-card{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:10px!important;padding:.75rem .85rem!important;color:#6b7280!important;font-size:.76rem!important;line-height:1.55!important;text-transform:uppercase!important}
+section[data-testid="stSidebar"] div[role="radiogroup"]{display:flex!important;flex-direction:column!important;gap:.34rem!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
+section[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] + div{position:absolute!important;opacity:0!important;pointer-events:none!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] label{position:relative!important;width:100%!important;min-height:42px!important;display:flex!important;align-items:center!important;padding:.56rem .72rem .56rem .88rem!important;margin:0!important;border:1px solid transparent!important;border-radius:10px!important;background:transparent!important;cursor:pointer!important;box-sizing:border-box!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] label>div:first-child{position:absolute!important;opacity:0!important;width:0!important;height:0!important;overflow:hidden!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] label p{margin:0!important;font-size:.83rem!important;font-weight:600!important;color:#374151!important;line-height:1.2!important;text-transform:uppercase!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover{background:#f8fafc!important;border-color:#e5e7eb!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked){background:#111827!important;border-color:#111827!important;box-shadow:0 5px 14px rgba(17,24,39,.14)!important}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)::before{content:"";position:absolute;left:.42rem;top:50%;width:4px;height:20px;border-radius:999px;background:#ef4444;transform:translateY(-50%)}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p{color:#fff!important;font-weight:700!important}
+[data-testid="stAppViewContainer"] > .main,[data-testid="stAppViewContainer"] .main,[data-testid="stMain"],.stMain{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important}
+[data-testid="stAppViewContainer"] .main .block-container,[data-testid="stMain"] .block-container,.stMain .block-container{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important}
+section[data-testid="stSidebar"][aria-expanded="false"]{width:0!important;min-width:0!important;max-width:0!important;flex-basis:0!important}
+.setta-logo-card{width:100%!important;min-height:128px!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#fff!important;border:1px solid #e5e8ee!important;border-radius:16px!important;box-shadow:0 4px 14px rgba(24,39,75,.08)!important;box-sizing:border-box!important;margin:0 0 2.55rem 0!important;padding:1.1rem 2rem!important}
+.setta-logo-card img{display:block!important;width:auto!important;height:auto!important;max-width:205px!important;max-height:86px!important;object-fit:contain!important}
+.app-title{margin:0!important;padding:0!important;font-size:2.55rem!important;line-height:1.08!important;font-weight:800!important;letter-spacing:-.04em!important;color:#050505!important;text-transform:uppercase!important}
+.app-sub{margin-top:.72rem!important;margin-bottom:1.65rem!important;color:#4f5661!important;font-size:.94rem!important;line-height:1.35!important;text-transform:uppercase!important}
+.section-band{margin:0 0 .95rem!important;padding:.82rem 1rem!important;background:#fff!important;border:1px solid #e5e8ee!important;border-left:5px solid #111827!important;border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
+.section-band-kicker{font-size:.66rem!important;font-weight:900!important;letter-spacing:.085em!important;text-transform:uppercase!important;color:#ef4444!important;margin-bottom:.18rem!important}
+.section-band-title{font-size:1.08rem!important;font-weight:900!important;color:#111827!important;letter-spacing:-.015em!important;line-height:1.2!important;text-transform:uppercase!important}
+.section-band-note{margin-top:.22rem!important;color:#667085!important;font-size:.75rem!important;line-height:1.35!important}
+.topic-divider{height:1px!important;background:#cbd5e1!important;margin:1.55rem 0 1.05rem!important;width:100%!important}
+[data-testid="stMetric"]{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:14px!important;box-shadow:0 4px 16px rgba(15,23,42,.055)!important;padding:1rem 1rem .9rem!important;min-height:112px!important;position:relative!important;overflow:hidden!important}
+[data-testid="stMetric"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#111827}
+[data-testid="stMetricLabel"] p{text-transform:uppercase!important;font-size:.72rem!important;font-weight:900!important;letter-spacing:.025em!important;color:#475569!important}
+[data-testid="stMetricValue"]{font-weight:800!important;color:#0f172a!important}
+[data-testid="stDataFrame"],[data-testid="stDataEditor"]{border:1px solid #dfe3e8!important;border-radius:14px!important;overflow:hidden!important;box-shadow:0 4px 16px rgba(15,23,42,.045)!important;background:#fff!important}
+[data-testid="stVerticalBlockBorderWrapper"]{border-color:#e5e8ee!important;border-radius:14px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
+[data-testid="stTabs"] button{font-weight:800!important;text-transform:uppercase!important;letter-spacing:.015em!important}
+div[data-testid="stMarkdownContainer"] h1,div[data-testid="stMarkdownContainer"] h2,div[data-testid="stMarkdownContainer"] h3,div[data-testid="stMarkdownContainer"] h4{text-transform:uppercase!important}
+[data-testid="stAlert"]{border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
+button[kind="primary"],button[data-testid="stBaseButton-primary"]{background:#111111!important;border-color:#111111!important;color:#fff!important}
+@media (max-width:900px){
+  .block-container{padding-top:2rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}
+  section[data-testid="stSidebar"]{min-width:300px!important;max-width:300px!important;width:300px!important}
+  .setta-logo-card{min-height:105px!important;margin-bottom:1.8rem!important;padding:.9rem 1rem!important}
+  .setta-logo-card img{max-width:170px!important;max-height:72px!important}
+  .app-title{font-size:2rem!important;line-height:1.12!important}
+  .app-sub{font-size:.86rem!important;margin-bottom:1.35rem!important}
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 with st.sidebar:
     st.markdown(
         '''<div class="sidebar-brand">
             <div class="sidebar-brand-title">GESTÃO DE ENTREGAS</div>
-            <div class="sidebar-brand-sub">Controle operacional da produção</div>
+            <div class="sidebar-brand-sub">CONTROLE OPERACIONAL SETTA</div>
         </div>''',
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="sidebar-section-label">Navegação</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section-label">NAVEGAÇÃO</div>', unsafe_allow_html=True)
     page = st.radio(
         "Página",
         ["Dashboard", "Cronograma", "Materiais", "NFs", "Histórico"],
@@ -3124,25 +3205,19 @@ with st.sidebar:
     )
 
     st.divider()
+    st.markdown('<div class="sidebar-section-label">OPERADOR</div>', unsafe_allow_html=True)
+    _session_operator_input("Operador", "sidebar_operator")
+
+    st.divider()
     st.markdown(
         '''<div class="sidebar-info-card">
             <b>CENTRAL DE DADOS</b><br>
             ALIMENTAÇÃO AUTOMÁTICA<br>
-            IDENTIDADE VISUAL GLOBAL
+            FOR022 · RELATÓRIO MRP · NF
         </div>''',
         unsafe_allow_html=True,
     )
 
-    st.divider()
-    st.markdown('<div class="sidebar-section-label">Informações</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'''<div class="sidebar-info-card">
-            <b>Data operacional</b><br>{today().strftime('%d/%m/%Y')}<br><br>
-            <b>Versão</b><br>Validação do cronograma<br><br>
-            <b>Build</b><br>APP core build 93
-        </div>''',
-        unsafe_allow_html=True,
-    )
 
 if active_logo_data:
     logo_html = f'<img src="data:{active_logo_mime};base64,{active_logo_data}" alt="Setta">'
@@ -3155,12 +3230,13 @@ st.markdown(
 )
 st.markdown('<h1 class="app-title">GESTÃO DE ENTREGAS | SETTA</h1>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="app-sub">Cronograma de montagem • Materiais • NFs • Histórico • Dashboard</p>',
+    '<p class="app-sub">CRONOGRAMA • MATERIAIS • NFS • HISTÓRICO</p>',
     unsafe_allow_html=True,
 )
 
 
 if page == "Dashboard":
+    section_band("01 · VISÃO GERAL", "INDICADORES DO FLUXO")
     schedule = st.session_state.schedule
     materials = st.session_state.materials
 
@@ -3334,7 +3410,6 @@ if page == "Dashboard":
                     "dashboard_pendencias_saldo": "Todos",
                 }, ("_dashboard_export_bytes",)),
             )
-        st.caption("Filtros independentes: após Pesquisar/Enter, cada lista mostra somente opções compatíveis com os demais filtros ativos.")
         if dashboard_filter_submit:
             st.session_state.pop("_dashboard_export_bytes", None)
 
@@ -3347,9 +3422,10 @@ if page == "Dashboard":
         dashboard_view["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
     )
 
-    section_title = "Próximas separações" if active_filter == "Projetos" else f"Projetos • {active_filter}"
+    topic_divider()
+    section_band("02 · PROJETOS", "CRONOGRAMA OPERACIONAL")
+    section_title = "PRÓXIMAS SEPARAÇÕES" if active_filter == "Projetos" else f"PROJETOS · {active_filter}"
     st.markdown(f"#### {section_title}")
-    st.caption(f"{len(dashboard_view)} projeto(s) exibido(s). Clique em Projetos para limpar o filtro.")
 
     if schedule.empty:
         st.info("Carregue o cronograma para iniciar.")
@@ -3413,6 +3489,7 @@ if page == "Dashboard":
 
 
 elif page == "Cronograma":
+    section_band("01 · CRONOGRAMA", "PROGRAMAÇÃO E TRATATIVAS")
     tab_current, tab_pcp = _lazy_tabs(["Cronograma atual", "Tratativa PCP"], "cronograma_tabs")
 
     with tab_current:
@@ -3539,7 +3616,6 @@ elif page == "Cronograma":
                             "cronograma_prioridade_filtro": "Todos",
                         }, ("_cronograma_export_bytes",)),
                     )
-                st.caption("Filtros independentes: cada opção é recalculada usando os demais filtros ativos, sem ordem obrigatória.")
                 if cronograma_filter_submit:
                     st.session_state.pop("_cronograma_export_bytes", None)
 
@@ -3551,7 +3627,6 @@ elif page == "Cronograma":
                 total_cronograma_filtrado = len(view)
                 view = view.head(80).reset_index(drop=True)
 
-                st.caption("Marque uma ou mais OPs na coluna Selecionar. Uma OP abre as ações individuais; duas ou mais habilitam a ação em lote.")
                 if total_cronograma_filtrado > 80:
                     st.caption(f"Exibindo 80 de {total_cronograma_filtrado} projetos. Use a busca e os filtros para localizar os demais.")
 
@@ -3602,7 +3677,6 @@ elif page == "Cronograma":
                         type="primary",
                         use_container_width=True,
                     )
-                st.caption("Os checkboxes são acumulados sem recarregar a tela; pressione Enter ou Pesquisar quando terminar.")
 
                 selected_rows = edited_view.index[
                     edited_view["Selecionar"].fillna(False).astype(bool)
@@ -4012,6 +4086,7 @@ elif page == "Cronograma":
 
 
 elif page == "Materiais":
+    section_band("01 · MATERIAIS", "CONTROLE DE MATERIAIS")
     # Build 75: a tela nao baixa mais o JSON completo do MRP (~4 MB).
     # A consulta e filtrada no Supabase e devolve no maximo 80 linhas por grupo.
     tab_list = st.container()
@@ -4206,7 +4281,6 @@ elif page == "Materiais":
                     "materiais_data_filtro": None,
                 }, ("_materiais_view_cache", "_material_export_bytes")),
             )
-        st.caption("Filtros independentes: após Pesquisar/Enter, cada lista considera todos os outros filtros ativos. A seleção de materiais reutiliza o resultado em memória.")
         if materiais_filter_submit:
             st.session_state.pop("_material_export_bytes", None)
 
@@ -4426,11 +4500,9 @@ elif page == "Materiais":
                                     except Exception as exc:
                                         st.error(f"Não foi possível salvar o comentário: {exc}")
                         else:
-                            st.caption("Marque os itens desejados na primeira coluna para liberar as ações em lote.")
 
             with tab_done:
                 if _tab_visible(tab_done):
-                    st.caption("Itens já marcados como separados pela equipe.")
                     if separados_view.empty:
                         st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
                     else:
@@ -4442,7 +4514,6 @@ elif page == "Materiais":
 
             with tab_problem:
                 if _tab_visible(tab_problem):
-                    st.caption("Materiais reportados com problema pela equipe. O comentário registra o motivo informado pelo operador.")
                     if problemas_view.empty:
                         st.info("Nenhum material com problema registrado dentro dos filtros selecionados.")
                     else:
@@ -4495,12 +4566,7 @@ elif page == "Materiais":
 
 
 elif page == "NFs":
-    st.markdown("#### Notas fiscais")
-    st.caption(
-        "Tratamento do relatório de Entradas: TES com 3 dígitos = LANÇADA; demais = PRÉ NOTA. "
-        "A QNT é considerada somente quando C.R. = 600307. "
-        "São consideradas somente as naturezas operacionais definidas para o Gestão de Entregas."
-    )
+    section_band("01 · NOTAS FISCAIS", "ACOMPANHAMENTO DE NFS")
 
     nf_success = st.session_state.pop("_nf_success", None)
     if nf_success:
@@ -4596,7 +4662,6 @@ elif page == "NFs":
                     "nf_produto_filter": "",
                 }, ("_nf_export_bytes",)),
             )
-        st.caption("Os filtros são aplicados somente ao clicar em Pesquisar ou pressionar Enter.")
         if nf_filter_submit:
             st.session_state.pop("_nf_export_bytes", None)
 
@@ -4667,16 +4732,13 @@ elif page == "NFs":
             )
 
 elif page == "Histórico":
+    section_band("01 · HISTÓRICO", "RASTREABILIDADE OPERACIONAL")
     history_tab_general, history_tab_materials, history_tab_users, history_tab_archive, history_tab_feed = _lazy_tabs([
         "Histórico geral", "Movimentações de materiais", "Gestão de usuários", "Carga histórica", "Alimentação"
     ], "historico_tabs")
     with history_tab_general:
         if _tab_visible(history_tab_general):
             st.markdown("#### Alertas críticos diários")
-            st.caption(
-                "Cada carga oficial registra as OPs que estavam com alerta crítico ativo naquele dia. "
-                "O histórico permanece mesmo após a conclusão da tratativa."
-            )
 
             with st.form("historico_alertas_filtros_form", clear_on_submit=False, enter_to_submit=True):
                 hf1, hf2 = st.columns([1, 1.6])
@@ -4706,7 +4768,6 @@ elif page == "Histórico":
                         "historico_alertas_op_v2": "",
                     }, ("_alertas_export_bytes",)),
                 )
-            st.caption("A consulta é executada somente ao clicar em Pesquisar ou pressionar Enter.")
 
             daily_alerts = pd.DataFrame()
             total_historico = 0
@@ -4935,7 +4996,7 @@ def _render_last_feed_load(kind):
     st.caption(" • ".join(parts))
 
 def _render_cronograma_feed():
-    st.markdown("#### Importação do Cronograma de Montagem")
+    st.markdown("#### FOR022")
     current_load_success = st.session_state.pop("_current_load_success", None)
     if current_load_success:
         st.success(current_load_success)
@@ -5033,8 +5094,7 @@ def _render_cronograma_feed():
 
 
 def _render_mrp_feed():
-    st.markdown("#### Importar MRP Consulta")
-    st.caption("O sistema utilizará integralmente a aba 'Demanda_Projeto'.")
+    st.markdown("#### RELATÓRIO MRP")
     _render_last_feed_load("mrp")
     uploaded_mrp = st.file_uploader("Selecione a planilha MRP Consulta", type=["xlsx", "xls"])
     if uploaded_mrp is not None:
@@ -5098,7 +5158,7 @@ def _render_mrp_feed():
 
 
 def _render_nf_feed():
-    st.markdown("#### Importar relatório bruto de NFs")
+    st.markdown("#### NF")
     st.caption(
         "Modelo validado: aba '1-Entradas', cabeçalho na linha 2. "
         "São utilizadas as colunas DIGITACAO, DOCUMENTO, NOME, C.R., NATUREZA, CODIGO, PRODUTO, QUANT e TES. "
@@ -5184,8 +5244,7 @@ def _render_nf_feed():
 
 
 def _render_feeding_center():
-    st.markdown("### CENTRAL DE DADOS")
-    st.caption("FOR022 • RELATÓRIO MRP • NF")
+    section_band("02 · FONTES", "CENTRAL DE DADOS")
 
     try:
         bundle = central_data.load_bundle_state()
@@ -5233,7 +5292,6 @@ def _render_feeding_center():
 
     st.divider()
     with st.expander("CONTINGÊNCIA", expanded=False):
-        st.caption("Use os uploads manuais somente se a Central de Dados estiver indisponível.")
         feed_cron, feed_mrp, feed_nf = _lazy_tabs(
             ["FOR022", "RELATÓRIO MRP", "NF"],
             "alimentacao_contingencia_tabs",
