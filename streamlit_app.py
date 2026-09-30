@@ -74,7 +74,7 @@ def _session_operator_input(label, key):
     current = _session_operator()
 
     if not names:
-        st.warning("Nenhum usuário operacional está cadastrado. Cadastre um em Histórico > Gestão de usuários.")
+        st.warning("NENHUM USUÁRIO OPERACIONAL ESTÁ CADASTRADO. CADASTRE EM HISTÓRICO > GESTÃO DE USUÁRIOS.")
         return ""
 
     if current and current in names:
@@ -4585,7 +4585,7 @@ elif page == "NFs":
             st.warning(f"Não foi possível consultar o resumo de NFs: {exc}")
 
     if not nf_meta:
-        st.info("Ainda não existe uma base de NFs salva. Utilize Histórico > Alimentação > NFs para realizar a primeira carga.")
+        st.info("AINDA NÃO EXISTE UMA BASE DE NFS SALVA. VERIFIQUE HISTÓRICO > ACOMPANHAMENTO DE API.")
     else:
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Linhas tratadas", int(nf_meta.get("qtd_linhas_tratadas", 0) or 0))
@@ -4733,7 +4733,7 @@ elif page == "NFs":
 elif page == "Histórico":
     section_band("01 · HISTÓRICO", "RASTREABILIDADE OPERACIONAL")
     history_tab_general, history_tab_materials, history_tab_users, history_tab_archive, history_tab_feed = _lazy_tabs([
-        "Histórico geral", "Movimentações de materiais", "Gestão de usuários", "Carga histórica", "Alimentação"
+        "HISTÓRICO GERAL", "MOVIMENTAÇÕES DE MATERIAIS", "GESTÃO DE USUÁRIOS", "CARGA HISTÓRICA", "ACOMPANHAMENTO DE API"
     ], "historico_tabs")
     with history_tab_general:
         if _tab_visible(history_tab_general):
@@ -5524,7 +5524,7 @@ def _build_history_payload(prepared):
 
 
 def _render_historical_loader():
-    st.markdown("### Carga histórica do cronograma")
+    st.markdown("### CARGA HISTÓRICA DO CRONOGRAMA")
     st.caption(
         "Envie os relatórios antigos, informe a data de referência de cada arquivo e "
         "o sistema reconstruirá a evolução do cronograma em ordem cronológica."
@@ -5703,7 +5703,7 @@ def _render_historical_loader():
 if globals().get("page") == "Histórico":
     with history_tab_materials:
         if _tab_visible(history_tab_materials):
-            st.markdown("#### Movimentações de materiais")
+            st.markdown("#### MOVIMENTAÇÕES DE MATERIAIS")
             st.caption(
                 "Registro permanente das ações realizadas nos materiais. Este histórico não é apagado "
                 "quando uma nova carga do MRP substitui ou limpa a lista operacional atual."
@@ -5845,7 +5845,7 @@ if globals().get("page") == "Histórico":
 
     with history_tab_users:
         if _tab_visible(history_tab_users):
-            st.markdown("#### Gestão de usuários")
+            st.markdown("#### GESTÃO DE USUÁRIOS")
             st.caption(
                 "Cadastre os nomes que poderão ser selecionados como operador nas ações do aplicativo. "
                 "A lista fica salva no Supabase e permanece disponível nas próximas sessões."
@@ -5944,8 +5944,8 @@ if globals().get("page") == "Histórico":
 
 _sidebar_operator = _session_operator()
 if _sidebar_operator:
-    st.sidebar.caption(f"Operador da sessão: {_sidebar_operator}")
-    if st.sidebar.button("Trocar operador", key="trocar_operador_sessao"):
+    st.sidebar.caption(f"OPERADOR DA SESSÃO: {_sidebar_operator}")
+    if st.sidebar.button("TROCAR OPERADOR", key="trocar_operador_sessao"):
         st.session_state.pop("_operador_sessao", None)
         for _k in ["core_bulk_user", "pcp_bulk_responsavel", "material_bulk_responsavel"]:
             st.session_state.pop(_k, None)
