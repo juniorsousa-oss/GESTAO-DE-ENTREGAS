@@ -3133,7 +3133,7 @@ st.markdown(
 /* SETTA FINAL — PADRÃO CONTROLE DE NFS */
 [data-testid="stAppViewContainer"]{background:#f4f7fb!important}
 [data-testid="stHeader"]{background:rgba(255,255,255,.96)!important}
-.block-container{max-width:1780px!important;padding-top:3.2rem!important;padding-left:2.7rem!important;padding-right:2.7rem!important;padding-bottom:3rem!important;width:100%!important}
+.block-container{max-width:1780px!important;padding-top:1.25rem!important;padding-left:2.7rem!important;padding-right:2.7rem!important;padding-bottom:3rem!important;width:100%!important}
 section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e8ebf0!important;min-width:336px!important;max-width:336px!important;width:336px!important}
 section[data-testid="stSidebar"] .block-container{padding-top:1.6rem!important;padding-left:1rem!important;padding-right:1rem!important}
 .sidebar-brand{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:12px!important;padding:.9rem 1rem!important;margin:0 0 1.05rem 0!important}
@@ -3174,7 +3174,7 @@ div[data-testid="stMarkdownContainer"] h1,div[data-testid="stMarkdownContainer"]
 [data-testid="stAlert"]{border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
 button[kind="primary"],button[data-testid="stBaseButton-primary"]{background:#111111!important;border-color:#111111!important;color:#fff!important}
 @media (max-width:900px){
-  .block-container{padding-top:2rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}
+  .block-container{padding-top:1rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}
   section[data-testid="stSidebar"]{min-width:300px!important;max-width:300px!important;width:300px!important}
   .setta-logo-card{min-height:105px!important;margin-bottom:1.8rem!important;padding:.9rem 1rem!important}
   .setta-logo-card img{max-width:170px!important;max-height:72px!important}
@@ -3286,6 +3286,9 @@ if page == "Dashboard":
     elif active_filter == "Alertas críticos":
         dashboard_view = dashboard_view[dashboard_view["alerta_ativo"].fillna(False).astype(bool)]
 
+    topic_divider()
+    section_band("02 · PROJETOS", "CRONOGRAMA OPERACIONAL")
+
     # Filtros facetados do Dashboard: cada campo considera todos os OUTROS filtros,
     # sem impor ordem de preenchimento. Os valores só chegam ao backend no Pesquisar/Enter.
     if not dashboard_view.empty:
@@ -3359,33 +3362,33 @@ if page == "Dashboard":
         with st.form("dashboard_filtros_form", clear_on_submit=False, enter_to_submit=True):
             df1, df2, df3, df4 = st.columns([1, 1, 1.35, 1.1])
             dashboard_date_filter = df1.selectbox(
-                "Data de Separação",
+                "DATA DE SEPARAÇÃO",
                 valid_dates,
                 index=valid_dates.index(st.session_state.get("dashboard_data_filtro")),
                 format_func=lambda d: "Todas" if d is None else d.strftime("%d/%m/%Y"),
                 key="dashboard_data_filtro",
             )
             dashboard_status_filter = df2.selectbox(
-                "Status",
+                "STATUS",
                 valid_statuses,
                 index=valid_statuses.index(st.session_state.get("dashboard_status_filtro", "Todos")),
                 key="dashboard_status_filtro",
             )
             dashboard_product_filter = df3.text_input(
-                "Produto",
+                "PRODUTO",
                 key="dashboard_produto_filtro",
-                placeholder="Digite parte do produto",
+                placeholder="DIGITE PARTE DO PRODUTO",
             )
             if active_filter == "Projetos":
                 dashboard_project_filter = df4.selectbox(
-                    "Projeto",
+                    "PROJETO",
                     project_options,
                     index=project_options.index(st.session_state.get("dashboard_projeto_filtro", "Todos")),
                     key="dashboard_projeto_filtro",
                 )
             elif active_filter == "Com pendências":
                 df4.selectbox(
-                    "Situação das pendências",
+                    "SITUAÇÃO DAS PENDÊNCIAS",
                     balance_options,
                     index=balance_options.index(st.session_state.get("dashboard_pendencias_saldo", "Todos")),
                     key="dashboard_pendencias_saldo",
@@ -3394,10 +3397,10 @@ if page == "Dashboard":
                 df4.caption("Os demais filtros se ajustam entre si após a pesquisa.")
             search_col, clear_col = st.columns([14, 1])
             dashboard_filter_submit = search_col.form_submit_button(
-                "Pesquisar", type="primary", use_container_width=True
+                "PESQUISAR", type="primary", use_container_width=True
             )
             clear_col.form_submit_button(
-                "Limpar",
+                "LIMPAR",
                 key="filter_clear_group__dashboard",
                 help="Limpar todos os filtros desta aba",
                 use_container_width=True,
@@ -3422,8 +3425,6 @@ if page == "Dashboard":
         dashboard_view["op"].astype(str).map(pending_balance_map).fillna(0).astype(int)
     )
 
-    topic_divider()
-    section_band("02 · PROJETOS", "CRONOGRAMA OPERACIONAL")
     section_title = "PRÓXIMAS SEPARAÇÕES" if active_filter == "Projetos" else f"PROJETOS · {active_filter}"
     st.markdown(f"#### {section_title}")
 
@@ -3441,7 +3442,7 @@ if page == "Dashboard":
         dashboard_total_exibicao = len(dashboard_view)
         dashboard_render = dashboard_view.head(50)
         if dashboard_total_exibicao > 50:
-            st.caption(f"Exibindo 50 de {dashboard_total_exibicao} projetos. Refine pelos filtros para localizar os demais.")
+            st.caption(f"EXIBINDO 50 DE {dashboard_total_exibicao} PROJETOS. REFINE PELOS FILTROS PARA LOCALIZAR OS DEMAIS.")
         st.dataframe(
             _style_operational_rows(dashboard_render[dashboard_cols]),
             use_container_width=True,
