@@ -11,6 +11,9 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit.delta_generator import DeltaGenerator
+from PIL import Image
+
+import central_entregas_data as central_data
 
 SUPABASE_EDGE_URL = "https://cuixazpxkvniqldmmnth.supabase.co/functions/v1/entrega-cronograma-api"
 
@@ -35,6 +38,8 @@ CACHE_INVALIDATING_ACTIONS = {
     "close_pcp_bulk",
     "material_action_bulk",
     "save_materials",
+    "central_current_load",
+    "central_sync_commit",
 }
 
 
@@ -1757,9 +1762,25 @@ import json
 import pandas as pd
 import streamlit as st
 
+try:
+    _GLOBAL_VISUAL_CONFIG = central_data.load_visual_config()
+except Exception:
+    _GLOBAL_VISUAL_CONFIG = {}
+
+def _global_browser_icon():
+    try:
+        raw = central_data.favicon_bytes(_GLOBAL_VISUAL_CONFIG)
+        if raw:
+            image = Image.open(BytesIO(raw))
+            image.load()
+            return image
+    except Exception:
+        pass
+    return str(Path(__file__).parent / "favicon.png.png")
+
 st.set_page_config(
     page_title="GESTÃO DE ENTREGAS | SETTA",
-    page_icon=str(Path(__file__).parent / "favicon.png.png"),
+    page_icon=_global_browser_icon(),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -2464,6 +2485,216 @@ def _nf_payload_rows(df):
     return json.loads(renamed.to_json(orient="records", force_ascii=False))
 
 
+
+def _central_sync_state(force=False):
+    try:
+        result = _cached_supabase_read(
+            "central_sync_status",
+            timeout=20,
+            force=force,
+        )
+        rows = result.get("data") or []
+        if isinstance(rows, dict):
+            rows = [rows]
+        return {
+            str(row.get("source_key")): row
+            for row in rows
+            if isinstance(row, dict)
+        }
+    except Exception:
+        return {}
+
+
+def _central_commit_state(source_key, version_token, source_updated_at, rows_count, status="ATUALIZADO", error_message=None):
+    return _supabase_api(
+        "central_sync_commit",
+        {
+            "source_key": source_key,
+            "version_token": version_token,
+            "source_updated_at": source_updated_at,
+            "rows_count": int(rows_count or 0),
+            "status": status,
+            "error_message": error_message,
+        },
+        timeout=30,
+    )
+
+
+def _central_schedule_payload(base, meta, filename):
+    rows_payload = []
+    for _, row in base.iterrows():
+        d = row["data_separacao"]
+        if d is None or pd.isna(d):
+            d_iso = None
+        else:
+            if isinstance(d, pd.Timestamp):
+                d = d.date()
+            d_iso = d.isoformat()
+        rows_payload.append(
+            {
+                "op": str(row["op"]),
+                "psy": str(row["psy"] or ""),
+                "cliente": str(row["cliente"] or ""),
+                "produto": str(row["produto"] or ""),
+                "data_separacao": d_iso,
+            }
+        )
+    return {
+        "data_referencia": today().isoformat(),
+        "arquivo_nome": filename or "FOR022_CENTRAL.xlsx",
+        "qtd_linhas": int(meta.get("linhas_excel", len(base)) or len(base)),
+        "rows": rows_payload,
+        "origem": "CENTRAL",
+    }
+
+
+def _sync_central_operational_feeds():
+    if not _supabase_anon_key():
+        return
+
+    try:
+        bundle = central_data.load_bundle_state()
+    except Exception as exc:
+        st.session_state["_central_feed_error"] = str(exc)
+        return
+
+    sources = bundle.get("sources") or {}
+    derived = bundle.get("derived") or {}
+    states = _central_sync_state()
+    changed_any = False
+    messages = []
+
+    jobs = [
+        ("for022", sources.get("for022") or {}),
+        ("relatorio_mrp", derived.get("relatorio_mrp") or {}),
+        ("nf", sources.get("nf") or {}),
+    ]
+
+    for key, meta in jobs:
+        if not meta or not bool(meta.get("available", True)):
+            continue
+
+        token = (
+            central_data.derived_token(meta)
+            if key == "relatorio_mrp"
+            else central_data.source_token(meta)
+        )
+        previous = states.get(key) or {}
+        if (
+            str(previous.get("version_token") or "") == token
+            and str(previous.get("status") or "").upper() == "ATUALIZADO"
+        ):
+            continue
+
+        try:
+            if key == "for022":
+                raw_bytes = central_data.download_source_bytes("for022", token)
+                holder = BytesIO(raw_bytes)
+                base, schedule_meta = read_macro_schedule(holder)
+                payload = _central_schedule_payload(
+                    base,
+                    schedule_meta,
+                    str(meta.get("last_file_name") or "FOR022_CENTRAL.xlsx"),
+                )
+                result = _supabase_api("central_current_load", payload, timeout=90)
+                rows_count = int((result or {}).get("ops", len(base)) or len(base))
+                st.session_state["_entrega_supabase_sync"] = False
+                st.session_state["_entrega_feed_status_sync"] = False
+
+            elif key == "relatorio_mrp":
+                raw = central_data.download_derived_frame("relatorio_mrp", token)
+                missing = [col for col in MATERIAL_COLS if col not in raw.columns]
+                if missing:
+                    raise ValueError(
+                        "RELATÓRIO MRP da Central sem colunas obrigatórias: "
+                        + ", ".join(missing)
+                    )
+                if raw.shape[1] < 15:
+                    raise ValueError(
+                        "RELATÓRIO MRP da Central não possui a coluna de contexto do projeto."
+                    )
+                base = import_materials(raw)
+                rows_payload = json.loads(
+                    base.to_json(orient="records", date_format="iso", force_ascii=False)
+                )
+                result = _supabase_api(
+                    "save_materials",
+                    {
+                        "arquivo_nome": "RELATORIO_MRP_CENTRAL",
+                        "rows": rows_payload,
+                    },
+                    timeout=120,
+                )
+                rows_count = int((result or {}).get("linhas", len(base)) or len(base))
+                st.session_state["_entrega_mrp_sync"] = False
+                st.session_state["_entrega_mrp_summary_sync"] = False
+                st.session_state["_entrega_mrp_ops_sync"] = False
+                st.session_state["_entrega_supabase_sync"] = False
+                st.session_state.pop("_materiais_view_cache", None)
+
+            else:
+                raw_bytes = central_data.download_source_bytes("nf", token)
+                raw_nf = _read_excel_bytes_cached(
+                    raw_bytes,
+                    "1-Entradas",
+                    header=1,
+                    dtype_text=True,
+                )
+                treated_nf, nf_meta = processar_nf_bruto(raw_nf)
+                payload_rows = _nf_payload_rows(treated_nf)
+                response = _supabase_api(
+                    "save_nfs",
+                    {
+                        "arquivo_nome": str(meta.get("last_file_name") or "NF_CENTRAL.xlsx"),
+                        "qtd_linhas_brutas": int(nf_meta.get("linhas_brutas", len(raw_nf))),
+                        "rows": payload_rows,
+                    },
+                    timeout=150,
+                ).get("data") or {}
+                if isinstance(response, list) and len(response) == 1 and isinstance(response[0], dict):
+                    response = response[0]
+                rows_count = int(response.get("linhas_tratadas", len(treated_nf)) or len(treated_nf))
+                st.session_state["_entrega_feed_status_sync"] = False
+                st.session_state.pop("_nf_meta_cache", None)
+                st.session_state.pop("_nf_filter_meta_cache", None)
+                st.session_state.pop("_nf_export_bytes", None)
+                st.session_state.pop("_nf_export_name", None)
+
+            source_updated_at = meta.get("last_update_at") or meta.get("processed_at")
+            _central_commit_state(
+                key,
+                token,
+                source_updated_at,
+                rows_count,
+                status="ATUALIZADO",
+            )
+            changed_any = True
+            messages.append(key)
+
+        except Exception as exc:
+            try:
+                _central_commit_state(
+                    key,
+                    token,
+                    meta.get("last_update_at") or meta.get("processed_at"),
+                    0,
+                    status="ERRO",
+                    error_message=str(exc)[:1000],
+                )
+            except Exception:
+                pass
+            st.session_state["_central_feed_error"] = f"{key}: {exc}"
+
+    if changed_any:
+        _clear_shared_read_cache()
+        st.session_state["_central_feed_success"] = (
+            "CENTRAL ATUALIZADA: " + " • ".join(messages)
+        )
+        st.rerun()
+
+
+_sync_central_operational_feeds()
+
 def _nf_rows_to_frame(rows):
     frame = pd.DataFrame(rows or [])
     if frame.empty:
@@ -2781,11 +3012,12 @@ if not isinstance(app_config, dict):
 
 saved_logo_data = str(app_config.get("logo_data") or "").strip()
 saved_logo_mime = str(app_config.get("logo_mime") or "image/png").strip() or "image/png"
-active_logo_data = saved_logo_data or default_logo_data
-active_logo_mime = saved_logo_mime if saved_logo_data else default_logo_mime
-button_color = str(app_config.get("button_color") or "#111111").strip().upper()
-if not re.fullmatch(r"#[0-9A-F]{6}", button_color):
-    button_color = "#111111"
+
+_global_logo_data = str(_GLOBAL_VISUAL_CONFIG.get("logo_data") or "").strip()
+_global_logo_mime = str(_GLOBAL_VISUAL_CONFIG.get("logo_mime") or "image/png").strip() or "image/png"
+active_logo_data = _global_logo_data or default_logo_data
+active_logo_mime = _global_logo_mime if _global_logo_data else default_logo_mime
+button_color = "#111827"
 
 
 def _lazy_tabs(labels, key):
@@ -2892,134 +3124,14 @@ with st.sidebar:
     )
 
     st.divider()
-    st.markdown('<div class="sidebar-section-label">Identidade visual</div>', unsafe_allow_html=True)
-
-    if active_logo_data:
-        st.markdown('<div class="sidebar-current-label">Logo atual</div>', unsafe_allow_html=True)
-        st.markdown(
-            f'<div class="sidebar-logo-preview"><img src="data:{active_logo_mime};base64,{active_logo_data}" alt="Logo atual"></div>',
-            unsafe_allow_html=True,
-        )
-
-    if "_logo_admin_unlocked" not in st.session_state:
-        st.session_state["_logo_admin_unlocked"] = False
-
-    if not st.session_state.get("_logo_admin_unlocked", False):
-        st.markdown(
-            '<div class="sidebar-lock-card"><strong>Configuração protegida</strong>Informe a senha administrativa para liberar a alteração da identidade visual.</div>',
-            unsafe_allow_html=True,
-        )
-        senha_logo = st.text_input(
-            "Senha administrativa",
-            type="password",
-            key="_logo_admin_password_input",
-            placeholder="Digite a senha",
-        )
-        if st.button(
-            "Desbloquear edição",
-            type="primary",
-            use_container_width=True,
-            key="unlock_logo_settings",
-        ):
-            if _logo_admin_password_valid(senha_logo):
-                st.session_state["_logo_admin_unlocked"] = True
-                st.session_state["_clear_logo_admin_password"] = True
-                st.rerun()
-            else:
-                st.error("Senha administrativa inválida.")
-    else:
-        st.markdown('<div class="sidebar-unlocked">Configuração desbloqueada</div>', unsafe_allow_html=True)
-        logo_empresa = st.file_uploader(
-            "Selecionar nova logo",
-            type=["png", "jpg", "jpeg", "svg"],
-            key="entrega_logo_empresa",
-            help="PNG, JPG, JPEG ou SVG. Limite operacional: 1,4 MB.",
-        )
-
-        uploaded_data = None
-        uploaded_mime = None
-        uploaded_too_large = False
-        if logo_empresa is not None:
-            uploaded_bytes = logo_empresa.getvalue()
-            uploaded_too_large = len(uploaded_bytes) > 1_400_000
-            if uploaded_too_large:
-                st.error("A logo deve ter no máximo 1,4 MB para manter o app leve.")
-            else:
-                uploaded_mime = logo_empresa.type or "image/png"
-                uploaded_data = base64.b64encode(uploaded_bytes).decode("ascii")
-                st.markdown('<div class="sidebar-current-label">Prévia da nova logo</div>', unsafe_allow_html=True)
-                st.markdown(
-                    f'<div class="sidebar-logo-preview"><img src="data:{uploaded_mime};base64,{uploaded_data}" alt="Nova logo"></div>',
-                    unsafe_allow_html=True,
-                )
-
-        if st.button(
-            "Salvar nova logo",
-            type="primary",
-            use_container_width=True,
-            disabled=(uploaded_data is None or uploaded_too_large),
-            key="save_logo_settings",
-        ):
-            try:
-                if uploaded_data != saved_logo_data or uploaded_mime != saved_logo_mime:
-                    _supabase_api(
-                        "save_logo",
-                        {"logo_data": uploaded_data, "logo_mime": uploaded_mime},
-                        timeout=20,
-                    )
-                    app_config = {
-                        **app_config,
-                        "logo_data": uploaded_data,
-                        "logo_mime": uploaded_mime,
-                    }
-                    st.session_state["_entrega_app_config"] = app_config
-                    saved_logo_data = uploaded_data
-                    saved_logo_mime = uploaded_mime
-                    active_logo_data = uploaded_data
-                    active_logo_mime = uploaded_mime
-                    st.success("Nova logo salva com sucesso.")
-                else:
-                    st.info("Esta já é a logo atualmente salva.")
-            except Exception as exc:
-                st.error(f"Não foi possível salvar a logo: {exc}")
-
-        st.markdown('<div class="sidebar-current-label">Cor principal dos botões</div>', unsafe_allow_html=True)
-        selected_button_color = st.color_picker(
-            "Escolha a cor",
-            value=button_color,
-            key="entrega_button_color",
-            help="A cor escolhida será aplicada aos botões principais do aplicativo.",
-        )
-        if st.button(
-            "Salvar cor dos botões",
-            type="primary",
-            use_container_width=True,
-            key="save_button_color_settings",
-        ):
-            try:
-                theme_result = _supabase_api(
-                    "save_button_color",
-                    {"button_color": selected_button_color},
-                    timeout=20,
-                ).get("data") or {}
-                if isinstance(theme_result, list) and theme_result:
-                    theme_result = theme_result[0]
-                saved_color = str((theme_result or {}).get("button_color") or selected_button_color).upper()
-                app_config = {**app_config, "button_color": saved_color}
-                st.session_state["_entrega_app_config"] = app_config
-                st.session_state["_entrega_supabase_sync"] = False
-                st.success("Cor dos botões salva.")
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Não foi possível salvar a cor dos botões: {exc}")
-
-        if st.button(
-            "Bloquear configurações",
-            use_container_width=True,
-            key="lock_logo_settings",
-        ):
-            st.session_state["_logo_admin_unlocked"] = False
-            st.rerun()
+    st.markdown(
+        '''<div class="sidebar-info-card">
+            <b>CENTRAL DE DADOS</b><br>
+            ALIMENTAÇÃO AUTOMÁTICA<br>
+            IDENTIDADE VISUAL GLOBAL
+        </div>''',
+        unsafe_allow_html=True,
+    )
 
     st.divider()
     st.markdown('<div class="sidebar-section-label">Informações</div>', unsafe_allow_html=True)
@@ -5072,21 +5184,69 @@ def _render_nf_feed():
 
 
 def _render_feeding_center():
-    st.markdown("### Alimentação das bases")
-    st.caption(
-        "Central de atualização das três bases operacionais. "
-        "Selecione a aba correspondente para carregar Cronograma, MRP Consulta ou NFs."
-    )
-    feed_cron, feed_mrp, feed_nf = _lazy_tabs(["Cronograma", "MRP Consulta", "NFs"], "alimentacao_tabs")
-    with feed_cron:
-        if _tab_visible(feed_cron):
-            _render_cronograma_feed()
-    with feed_mrp:
-        if _tab_visible(feed_mrp):
-            _render_mrp_feed()
-    with feed_nf:
-        if _tab_visible(feed_nf):
-            _render_nf_feed()
+    st.markdown("### CENTRAL DE DADOS")
+    st.caption("FOR022 • RELATÓRIO MRP • NF")
+
+    try:
+        bundle = central_data.load_bundle_state()
+        sync_state = _central_sync_state()
+    except Exception as exc:
+        bundle = {"sources": {}, "derived": {}}
+        sync_state = {}
+        st.warning(f"Não foi possível consultar a Central: {exc}")
+
+    sources = bundle.get("sources") or {}
+    derived = bundle.get("derived") or {}
+    cards = [
+        ("FOR022", "for022", sources.get("for022") or {}),
+        ("RELATÓRIO MRP", "relatorio_mrp", derived.get("relatorio_mrp") or {}),
+        ("NF", "nf", sources.get("nf") or {}),
+    ]
+
+    cols = st.columns(3)
+    for col, (label, key, meta) in zip(cols, cards):
+        state = sync_state.get(key) or {}
+        status = str(state.get("status") or ("ATUALIZADO" if meta else "AGUARDANDO")).upper()
+        updated = _fmt_feed_datetime(
+            state.get("synced_at")
+            or meta.get("processed_at")
+            or meta.get("last_update_at")
+        )
+        version = (
+            f"V{int(meta.get('version') or 0)}"
+            if key != "relatorio_mrp"
+            else "BASE DERIVADA"
+        )
+        col.markdown(
+            f"""<div class="kpi-card">
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value" style="font-size:1rem">{status}</div>
+                <div class="kpi-note">{version} · {updated or '—'}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    if st.session_state.get("_central_feed_success"):
+        st.success(st.session_state.pop("_central_feed_success"))
+    if st.session_state.get("_central_feed_error"):
+        st.warning(st.session_state.get("_central_feed_error"))
+
+    st.divider()
+    with st.expander("CONTINGÊNCIA", expanded=False):
+        st.caption("Use os uploads manuais somente se a Central de Dados estiver indisponível.")
+        feed_cron, feed_mrp, feed_nf = _lazy_tabs(
+            ["FOR022", "RELATÓRIO MRP", "NF"],
+            "alimentacao_contingencia_tabs",
+        )
+        with feed_cron:
+            if _tab_visible(feed_cron):
+                _render_cronograma_feed()
+        with feed_mrp:
+            if _tab_visible(feed_mrp):
+                _render_mrp_feed()
+        with feed_nf:
+            if _tab_visible(feed_nf):
+                _render_nf_feed()
 
 
 def _infer_date_from_filename(name):
