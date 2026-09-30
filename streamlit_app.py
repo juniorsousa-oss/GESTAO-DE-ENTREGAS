@@ -4499,7 +4499,6 @@ elif page == "Materiais":
                                         st.rerun()
                                     except Exception as exc:
                                         st.error(f"Não foi possível salvar o comentário: {exc}")
-                        else:
 
             with tab_done:
                 if _tab_visible(tab_done):
