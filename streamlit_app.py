@@ -607,7 +607,7 @@ _original_markdown = _setta_native_callable(st.markdown, "_markdown_ui", "_origi
 def _markdown_ui(body, *args, **kwargs):
     if isinstance(body, str) and "<style>" in body:
         body = body.replace(
-            '[data-testid="stSidebar"] {min-width: 245px; max-width: 245px;}',
+            '[data-testid="stSidebar"] {width:260px!important;min-width:260px!important;max-width:260px!important;}',
             ''
         )
         body = body.replace(
@@ -1827,7 +1827,7 @@ st.markdown(
     """
     <style>
       .block-container {padding-top: 1.25rem; padding-bottom: 2rem;}
-      [data-testid="stSidebar"] {min-width: 245px; max-width: 245px;}
+      [data-testid="stSidebar"] {width:260px!important;min-width:260px!important;max-width:260px!important;}
       .app-title {font-size:1.65rem;font-weight:800;margin-bottom:.1rem;}
       .app-sub {font-size:.92rem;color:#6b7280;margin-bottom:1rem;}
       .critical {border:1px solid #ef4444;border-left:6px solid #ef4444;
@@ -3134,7 +3134,7 @@ st.markdown(
 [data-testid="stAppViewContainer"]{background:#f4f7fb!important}
 [data-testid="stHeader"]{background:rgba(255,255,255,.96)!important}
 .block-container{max-width:1780px!important;padding-top:1.25rem!important;padding-left:2.7rem!important;padding-right:2.7rem!important;padding-bottom:3rem!important;width:100%!important}
-section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e8ebf0!important;min-width:336px!important;max-width:336px!important;width:336px!important}
+section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e8ebf0!important;min-width:260px!important;max-width:260px!important;width:260px!important;flex-basis:260px!important}
 section[data-testid="stSidebar"] .block-container{padding-top:1.6rem!important;padding-left:1rem!important;padding-right:1rem!important}
 .sidebar-brand{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:12px!important;padding:.9rem 1rem!important;margin:0 0 1.05rem 0!important}
 .sidebar-brand-title{font-size:.92rem!important;font-weight:800!important;color:#111827!important;letter-spacing:-.01em!important;text-transform:uppercase!important}
@@ -3187,7 +3187,7 @@ div[data-testid="stMarkdownContainer"] h1,div[data-testid="stMarkdownContainer"]
 button[kind="primary"],button[data-testid="stBaseButton-primary"]{background:#111111!important;border-color:#111111!important;color:#fff!important}
 @media (max-width:900px){
   .block-container{padding-top:1rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}
-  section[data-testid="stSidebar"]{min-width:300px!important;max-width:300px!important;width:300px!important}
+  section[data-testid="stSidebar"]{min-width:260px!important;max-width:260px!important;width:260px!important;flex-basis:260px!important}
   .setta-logo-card{min-height:105px!important;margin-bottom:1.8rem!important;padding:.9rem 1rem!important}
   .setta-logo-card img{max-width:170px!important;max-height:72px!important}
   .app-title{font-size:2rem!important;line-height:1.12!important}
