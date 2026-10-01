@@ -2004,6 +2004,69 @@ def _read_excel_bytes_cached(file_bytes, sheet_name, header=0, dtype_text=False)
     )
 
 
+@st.cache_data(ttl=300, show_spinner=False, max_entries=8)
+def _read_nf_excel_bytes_cached(file_bytes):
+    """
+    Localiza automaticamente a aba e a linha de cabeçalho do relatório de NFs.
+
+    O Protheus/Excel pode alterar o nome da planilha exportada sem alterar a
+    estrutura do relatório. A integração não deve ficar indisponível apenas
+    porque a aba deixou de se chamar exatamente "1-Entradas".
+    """
+    excel = pd.ExcelFile(BytesIO(file_bytes))
+    if not excel.sheet_names:
+        raise ValueError("O arquivo de NFs não possui nenhuma aba.")
+
+    required = {str(col).strip().upper() for col in NF_REQUIRED_COLS}
+
+    # Mantém a aba histórica como primeira tentativa, mas aceita qualquer nome.
+    preferred = [
+        sheet for sheet in excel.sheet_names
+        if str(sheet).strip().casefold() == "1-entradas"
+    ]
+    sheet_order = preferred + [
+        sheet for sheet in excel.sheet_names if sheet not in preferred
+    ]
+
+    for sheet in sheet_order:
+        try:
+            preview = pd.read_excel(
+                BytesIO(file_bytes),
+                sheet_name=sheet,
+                header=None,
+                dtype=str,
+                nrows=15,
+            )
+        except Exception:
+            continue
+
+        for header_row in range(len(preview)):
+            cells = {
+                str(value).strip().upper()
+                for value in preview.iloc[header_row].tolist()
+                if pd.notna(value) and str(value).strip()
+            }
+            if not required.issubset(cells):
+                continue
+
+            raw = pd.read_excel(
+                BytesIO(file_bytes),
+                sheet_name=sheet,
+                header=header_row,
+                dtype=str,
+            )
+            raw.columns = [str(col).strip() for col in raw.columns]
+            return raw
+
+    available = ", ".join(str(sheet) for sheet in excel.sheet_names)
+    raise ValueError(
+        "Não foi possível identificar automaticamente a aba de entradas do relatório de NFs. "
+        "A integração procura uma aba que contenha as colunas "
+        + ", ".join(NF_REQUIRED_COLS)
+        + f". Abas encontradas: {available or 'nenhuma'}."
+    )
+
+
 def read_macro_schedule(uploaded_file):
     raw = _read_excel_bytes_cached(uploaded_file.getvalue(), "Datas esperadas")
     if raw.shape[1] < 22:
@@ -2634,12 +2697,7 @@ def _sync_central_operational_feeds():
 
             else:
                 raw_bytes = central_data.download_source_bytes("nf", token)
-                raw_nf = _read_excel_bytes_cached(
-                    raw_bytes,
-                    "1-Entradas",
-                    header=1,
-                    dtype_text=True,
-                )
+                raw_nf = _read_nf_excel_bytes_cached(raw_bytes)
                 treated_nf, nf_meta = processar_nf_bruto(raw_nf)
                 payload_rows = _nf_payload_rows(treated_nf)
                 response = _supabase_api(
@@ -5230,7 +5288,7 @@ def _render_mrp_feed():
 def _render_nf_feed():
     st.markdown("#### NF")
     st.caption(
-        "Modelo validado: aba '1-Entradas', cabeçalho na linha 2. "
+        "A aba e a linha de cabeçalho são identificadas automaticamente pela estrutura do relatório. "
         "São utilizadas as colunas DIGITACAO, DOCUMENTO, NOME, C.R., NATUREZA, CODIGO, PRODUTO, QUANT e TES. "
         "Somente as 5 naturezas operacionais configuradas serão consideradas."
     )
@@ -5243,12 +5301,7 @@ def _render_nf_feed():
 
     if uploaded_nf is not None:
         try:
-            raw_nf = _read_excel_bytes_cached(
-                uploaded_nf.getvalue(),
-                "1-Entradas",
-                header=1,
-                dtype_text=True,
-            )
+            raw_nf = _read_nf_excel_bytes_cached(uploaded_nf.getvalue())
             treated_nf, nf_import_meta = processar_nf_bruto(raw_nf)
 
             c1, c2, c3, c4 = st.columns(4)
