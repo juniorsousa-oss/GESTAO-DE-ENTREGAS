@@ -2020,8 +2020,56 @@ def _read_nf_excel_bytes_cached(file_bytes):
     )
 
 
+def _read_nf_normalized_pack(pack: dict) -> pd.DataFrame:
+    """Localiza cabeçalho da NF diretamente no pacote SETTA_SOURCE_V1."""
+    required = {str(col).strip().upper() for col in NF_REQUIRED_COLS}
+    names = central_data.source_sheet_names(pack)
+    preferred = [
+        name for name in names
+        if str(name).strip().casefold() == "1-entradas"
+    ]
+    order = preferred + [name for name in names if name not in preferred]
+
+    for sheet in order:
+        raw = central_data.source_frame(pack, sheet_name=sheet, header=None)
+        preview = raw.head(15)
+        for header_row in range(len(preview)):
+            cells = {
+                str(value).strip().upper()
+                for value in preview.iloc[header_row].tolist()
+                if pd.notna(value) and str(value).strip()
+            }
+            if not required.issubset(cells):
+                continue
+
+            values = raw.iloc[header_row].tolist()
+            used: dict[str, int] = {}
+            columns = []
+            for idx, value in enumerate(values):
+                base = (
+                    f"Unnamed: {idx}"
+                    if value is None or str(value).strip() == ""
+                    else str(value).strip()
+                )
+                count = used.get(base, 0)
+                used[base] = count + 1
+                columns.append(base if count == 0 else f"{base}.{count}")
+            frame = raw.iloc[header_row + 1 :].reset_index(drop=True).copy()
+            frame.columns = columns
+            return frame
+
+    available = ", ".join(names)
+    raise ValueError(
+        "Não foi possível identificar automaticamente a aba de entradas do relatório de NFs. "
+        "Abas encontradas: " + (available or "nenhuma") + "."
+    )
+
+
 def read_macro_schedule(uploaded_file):
-    raw = _read_excel_bytes_cached(uploaded_file.getvalue(), "Datas esperadas")
+    if isinstance(uploaded_file, pd.DataFrame):
+        raw = uploaded_file.copy()
+    else:
+        raw = _read_excel_bytes_cached(uploaded_file.getvalue(), "Datas esperadas")
     if raw.shape[1] < 22:
         raise ValueError("A aba 'Datas esperadas' não possui a coluna V esperada para Separação.")
 
@@ -2611,8 +2659,15 @@ def _sync_central_operational_feeds(force=False):
 
         try:
             if key == "for022":
-                raw_bytes = central_data.download_source_bytes("for022", token)
-                holder = BytesIO(raw_bytes)
+                source = central_data.download_preferred_source("for022", token)
+                if source.get("normalized"):
+                    holder = central_data.source_frame(
+                        source["pack"],
+                        sheet_name="Datas esperadas",
+                        header=0,
+                    )
+                else:
+                    holder = BytesIO(source["raw"])
                 base, schedule_meta = read_macro_schedule(holder)
                 payload = _central_schedule_payload(
                     base,
@@ -2656,8 +2711,11 @@ def _sync_central_operational_feeds(force=False):
                 st.session_state.pop("_materiais_view_cache", None)
 
             else:
-                raw_bytes = central_data.download_source_bytes("nf", token)
-                raw_nf = _read_nf_excel_bytes_cached(raw_bytes)
+                source = central_data.download_preferred_source("nf", token)
+                if source.get("normalized"):
+                    raw_nf = _read_nf_normalized_pack(source["pack"])
+                else:
+                    raw_nf = _read_nf_excel_bytes_cached(source["raw"])
                 treated_nf, nf_meta = processar_nf_bruto(raw_nf)
                 payload_rows = _nf_payload_rows(treated_nf)
                 response = _supabase_api(
