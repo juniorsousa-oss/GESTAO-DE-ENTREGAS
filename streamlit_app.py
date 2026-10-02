@@ -489,12 +489,12 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 93
+APP_BUILD = 94
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
         "_entrega_feed_status_sync", "_nf_meta_cache", "_nf_filter_meta_cache",
-        "_materiais_view_cache",
+        "_materiais_view_cache", "_entrega_startup_central_checked",
     ]:
         st.session_state.pop(_key, None)
     _clear_shared_read_cache()
@@ -2611,9 +2611,16 @@ def _central_schedule_payload(base, meta, filename):
     }
 
 
-def _sync_central_operational_feeds():
+def _sync_central_operational_feeds(force=False):
     if not _supabase_anon_key():
         return
+
+    if force:
+        try:
+            central_data.load_bundle_state.clear()
+        except Exception:
+            pass
+        _clear_shared_read_cache()
 
     try:
         bundle = central_data.load_bundle_state()
@@ -2623,7 +2630,7 @@ def _sync_central_operational_feeds():
 
     sources = bundle.get("sources") or {}
     derived = bundle.get("derived") or {}
-    states = _central_sync_state()
+    states = _central_sync_state(force=force)
     changed_any = False
     messages = []
 
@@ -3054,7 +3061,12 @@ def _style_operational_rows(df):
         return [css] * len(row)
     return df.style.apply(style_row, axis=1)
 
-_sync_central_operational_feeds()
+if not st.session_state.get("_entrega_startup_central_checked"):
+    st.session_state["_entrega_startup_central_checked"] = True
+    with st.spinner("VERIFICANDO E ATUALIZANDO CRONOGRAMA, MATERIAIS E NFS..."):
+        _sync_central_operational_feeds(force=True)
+else:
+    _sync_central_operational_feeds(force=False)
 
 logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
 default_logo_data = ""
@@ -3203,14 +3215,16 @@ section[data-testid="stSidebar"] .block-container{padding-top:1.6rem!important;p
 .sidebar-status-name{font-size:.7rem!important;font-weight:900!important;color:#64748b!important;text-transform:uppercase!important;letter-spacing:.025em!important}
 .sidebar-status-value{margin-top:.18rem!important;font-size:.86rem!important;font-weight:900!important;color:#111827!important;text-transform:uppercase!important}
 .sidebar-status-meta{margin-top:.28rem!important;color:#6b7280!important;font-size:.68rem!important;line-height:1.45!important;text-transform:uppercase!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"]{margin:0 0 .34rem 0!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button{position:relative!important;width:100%!important;min-height:42px!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important;padding:.56rem .72rem .56rem calc(.88rem + 10px)!important;border-radius:10px!important;font-size:.83rem!important;font-weight:600!important;line-height:1.2!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button > div{width:100%!important;text-align:left!important;justify-content:flex-start!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button p{width:100%!important;margin:0!important;text-align:left!important;text-transform:uppercase!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-secondary"]{background:transparent!important;border:1px solid transparent!important;color:#374151!important;box-shadow:none!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-secondary"]:hover{background:#f8fafc!important;border-color:#e5e7eb!important;color:#111827!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-primary"]{background:#111827!important;border:1px solid #111827!important;color:#fff!important;box-shadow:0 5px 14px rgba(17,24,39,.14)!important;font-weight:700!important}
-section[data-testid="stSidebar"] div[class*="st-key-entrega_nav_"] button[data-testid="stBaseButton-primary"]::before{content:"";position:absolute;left:.42rem;top:50%;width:4px;height:20px;border-radius:999px;background:#ef4444;transform:translateY(-50%)}
+section[data-testid="stSidebar"] div[data-testid="stButton"]{margin:0!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button{position:relative!important;min-height:42px!important;justify-content:flex-start!important;text-align:left!important;padding:.56rem .72rem .56rem calc(.88rem + 10px)!important;border-radius:10px!important;font-size:.83rem!important;font-weight:600!important;line-height:1.2!important;width:100%!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button > div{width:100%!important;text-align:left!important;justify-content:flex-start!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button p{width:100%!important;margin:0!important;text-align:left!important;text-transform:uppercase!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-secondary"]{background:transparent!important;border:1px solid transparent!important;color:#374151!important;box-shadow:none!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-secondary"]:hover{background:#f8fafc!important;border-color:#e5e7eb!important;color:#111827!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-primary"]{background:#111827!important;border:1px solid #111827!important;color:#fff!important;box-shadow:0 5px 14px rgba(17,24,39,.14)!important;font-weight:700!important}
+section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-primary"]::before{content:"";position:absolute;left:.42rem;top:50%;width:4px;height:20px;border-radius:999px;background:#ef4444;transform:translateY(-50%)}
+section[data-testid="stSidebar"] div[data-testid="stElementContainer"]:has(div[data-testid="stButton"]){margin-bottom:-.45rem!important}
+.sidebar-status-spacer{height:.6rem!important;min-height:.6rem!important}
 section[data-testid="stSidebar"] div[role="radiogroup"]{display:flex!important;flex-direction:column!important;gap:.34rem!important}
 section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
 section[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] + div{position:absolute!important;opacity:0!important;pointer-events:none!important}
@@ -3285,7 +3299,8 @@ def _sidebar_operational_status():
 
     latest = None
     for key in keys:
-        value = (states.get(key) or {}).get("synced_at")
+        row = states.get(key) or {}
+        value = row.get("source_updated_at") or row.get("synced_at")
         if not value:
             continue
         stamp = pd.to_datetime(value, errors="coerce", utc=True)
@@ -3324,13 +3339,14 @@ with st.sidebar:
         )
 
     st.divider()
+    st.markdown('<div class="sidebar-status-spacer"></div>', unsafe_allow_html=True)
     _sidebar_status, _sidebar_status_time, _sidebar_status_ok, _sidebar_status_total = _sidebar_operational_status()
     st.markdown('<div class="sidebar-section-label">STATUS GERAL</div>', unsafe_allow_html=True)
     st.markdown(
         f'''<div class="sidebar-status-card">
             <div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>
             <div class="sidebar-status-value">{_sidebar_status}</div>
-            <div class="sidebar-status-meta">{_sidebar_status_time} · {_sidebar_status_ok}/{_sidebar_status_total} FONTES OK</div>
+            <div class="sidebar-status-meta">ÚLTIMA ATUALIZAÇÃO {_sidebar_status_time} · {_sidebar_status_ok}/{_sidebar_status_total} FONTES OK</div>
         </div>''',
         unsafe_allow_html=True,
     )
