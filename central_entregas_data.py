@@ -126,6 +126,102 @@ def download_source_bytes(
     return response.content
 
 
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=8)
+def download_normalized_source(
+    source_key: str,
+    version_token: str,
+) -> dict:
+    del version_token
+    meta = central_api(
+        "source_normalized_download",
+        {"source_key": source_key},
+        timeout=30,
+    ).get("data") or {}
+    signed_url = str(meta.get("signed_url") or "")
+    if not signed_url:
+        raise RuntimeError(f"Fonte normalizada {source_key} sem URL de leitura.")
+    response = SESSION.get(signed_url, timeout=120)
+    response.raise_for_status()
+    pack = json.loads(gzip.decompress(response.content).decode("utf-8"))
+    if str(pack.get("format") or "") != "SETTA_SOURCE_V1":
+        raise RuntimeError(f"Formato normalizado inválido para {source_key}.")
+    return pack
+
+
+def source_sheet_names(pack: dict) -> list[str]:
+    return [
+        str(item.get("name") or "")
+        for item in (pack.get("sheets") or [])
+        if isinstance(item, dict)
+    ]
+
+
+def source_frame(
+    pack: dict,
+    *,
+    sheet_name: str | int = 0,
+    header: int | None = 0,
+) -> pd.DataFrame:
+    sheets = [
+        item for item in (pack.get("sheets") or [])
+        if isinstance(item, dict)
+    ]
+    if not sheets:
+        raise ValueError("Pacote normalizado sem planilhas.")
+
+    if isinstance(sheet_name, str):
+        selected = next(
+            (item for item in sheets if str(item.get("name") or "") == sheet_name),
+            None,
+        )
+        if selected is None:
+            raise ValueError(f"A planilha '{sheet_name}' não foi encontrada.")
+    else:
+        index = int(sheet_name)
+        if index < 0 or index >= len(sheets):
+            raise ValueError(f"Índice de planilha inválido: {index}.")
+        selected = sheets[index]
+
+    raw = pd.DataFrame(selected.get("rows") or [])
+    if header is None:
+        return raw
+
+    header_index = int(header)
+    if header_index < 0 or header_index >= len(raw):
+        raise ValueError(f"Linha de cabeçalho inválida: {header_index}.")
+    values = raw.iloc[header_index].tolist()
+    used: dict[str, int] = {}
+    columns = []
+    for idx, value in enumerate(values):
+        base = (
+            f"Unnamed: {idx}"
+            if value is None or str(value).strip() == ""
+            else str(value)
+        )
+        count = used.get(base, 0)
+        used[base] = count + 1
+        columns.append(base if count == 0 else f"{base}.{count}")
+    frame = raw.iloc[header_index + 1 :].reset_index(drop=True).copy()
+    frame.columns = columns
+    return frame
+
+
+def download_preferred_source(
+    source_key: str,
+    version_token: str,
+) -> dict:
+    try:
+        return {
+            "normalized": True,
+            "pack": download_normalized_source(source_key, version_token),
+        }
+    except Exception:
+        return {
+            "normalized": False,
+            "raw": download_source_bytes(source_key, version_token),
+        }
+
+
 @st.cache_data(show_spinner=False, ttl=3600, max_entries=4)
 def download_derived_frame(
     base_key: str,
