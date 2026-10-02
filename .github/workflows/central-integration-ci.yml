@@ -37,5 +37,11 @@ jobs:
           assert 'with st.expander("CONTINGÊNCIA"' in app
           assert "bundle_state" in central
           assert "visual_get" in central
+          assert "def _sync_central_operational_feeds(force=False):" in app
+          assert "VERIFICANDO E ATUALIZANDO CRONOGRAMA, MATERIAIS E NFS" in app
+          assert 'row.get("source_updated_at") or row.get("synced_at")' in app
+          assert "ÚLTIMA ATUALIZAÇÃO" in app
+          assert "sidebar-status-spacer" in app
+          assert "margin-bottom:-.45rem!important" in app
           print("CENTRAL_ENTREGAS_COMPILE_OK")
           PY
