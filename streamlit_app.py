@@ -18,12 +18,14 @@ import central_entregas_data as central_data
 SUPABASE_EDGE_URL = "https://cuixazpxkvniqldmmnth.supabase.co/functions/v1/entrega-cronograma-api"
 
 
-OPERATOR_REQUIRED_ACTIONS = {
+AUDIT_RESPONSIBLE_ACTIONS = {
     "update_status_bulk",
     "team_action",
     "close_pcp_bulk",
     "material_action_bulk",
 }
+DEFAULT_AUDIT_RESPONSIBLE = "Sistema"
+
 
 CACHE_INVALIDATING_ACTIONS = {
     "save_logo",
@@ -44,66 +46,18 @@ CACHE_INVALIDATING_ACTIONS = {
 
 
 def _session_operator():
-    return str(st.session_state.get("_operador_sessao", "") or "").strip()
+    # Temporário até a implantação do banco único de usuários.
+    return DEFAULT_AUDIT_RESPONSIBLE
 
 
 def _load_operator_options(force=False):
-    if st.session_state.get("_operadores_sync") and not force:
-        return st.session_state.get("_operadores_cadastrados", [])
-    try:
-        result = _cached_supabase_read("list_operators", timeout=20, force=force)
-        rows = result.get("data") or []
-        if isinstance(rows, dict):
-            rows = [rows]
-        rows = [r for r in rows if isinstance(r, dict) and str(r.get("nome") or "").strip()]
-        st.session_state["_operadores_cadastrados"] = rows
-        st.session_state["_operadores_sync"] = True
-        current = _session_operator()
-        valid_names = {str(r.get("nome") or "").strip() for r in rows}
-        if current and current not in valid_names:
-            st.session_state.pop("_operador_sessao", None)
-        return rows
-    except Exception as exc:
-        st.session_state["_operadores_error"] = str(exc)
-        return st.session_state.get("_operadores_cadastrados", [])
+    # Compatibilidade temporária. O cadastro local de operadores não é mais usado.
+    return []
 
 
 def _session_operator_input(label, key):
-    rows = _load_operator_options()
-    names = [str(r.get("nome") or "").strip() for r in rows if str(r.get("nome") or "").strip()]
-    current = _session_operator()
-
-    if not names:
-        st.warning("NENHUM USUÁRIO OPERACIONAL ESTÁ CADASTRADO. CADASTRE EM HISTÓRICO > GESTÃO DE USUÁRIOS.")
-        return ""
-
-    if current and current in names:
-        st.caption(f"{label}: **{current}**")
-        change_key = f"{key}_alterar"
-        if st.checkbox("Alterar usuário", key=change_key):
-            selected = st.selectbox(
-                "Novo usuário",
-                names,
-                index=names.index(current),
-                key=f"{key}_novo_usuario",
-            )
-            if selected != current:
-                st.session_state["_operador_sessao"] = selected
-                st.session_state[change_key] = False
-                st.rerun()
-        return _session_operator()
-
-    placeholder = "Selecione o operador"
-    selected = st.selectbox(
-        label,
-        [placeholder] + names,
-        index=0,
-        key=key,
-    )
-    if selected != placeholder:
-        st.session_state["_operador_sessao"] = selected
-        return selected
-    return ""
+    # Não renderiza campo. Mantido para compatibilidade com fluxos antigos.
+    return DEFAULT_AUDIT_RESPONSIBLE
 
 
 def _supabase_anon_key():
@@ -130,12 +84,11 @@ def _supabase_anon_key():
 
 
 def _supabase_api(action, payload=None, timeout=45):
-    if action in OPERATOR_REQUIRED_ACTIONS:
-        operator = _session_operator()
-        if not operator:
-            raise RuntimeError("Informe o operador responsável antes de executar esta ação.")
+    if action in AUDIT_RESPONSIBLE_ACTIONS:
         payload = dict(payload or {})
-        payload["responsavel"] = operator
+        payload["responsavel"] = str(
+            payload.get("responsavel") or DEFAULT_AUDIT_RESPONSIBLE
+        ).strip() or DEFAULT_AUDIT_RESPONSIBLE
 
     key = _supabase_anon_key()
     if not key:
@@ -3257,6 +3210,170 @@ section[data-testid="stSidebar"][aria-expanded="false"]{width:0!important;min-wi
 div[data-testid="stMarkdownContainer"] h1,div[data-testid="stMarkdownContainer"] h2,div[data-testid="stMarkdownContainer"] h3,div[data-testid="stMarkdownContainer"] h4{text-transform:uppercase!important}
 [data-testid="stAlert"]{border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
 button[kind="primary"],button[data-testid="stBaseButton-primary"]{background:#111111!important;border-color:#111111!important;color:#fff!important}
+/* SIDEBAR SETTA V1 — PADRÃO VALIDADO
+   26 / 20 / 8 / 42 / 2 / 20 / 20 / 8 px */
+section[data-testid="stSidebar"] .block-container{
+  width:260px!important;
+  min-width:260px!important;
+  max-width:260px!important;
+  box-sizing:border-box!important;
+  padding-top:26px!important;
+  padding-left:16px!important;
+  padding-right:16px!important;
+}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{
+  gap:0!important;
+  row-gap:0!important;
+}
+section[data-testid="stSidebar"] div[data-testid="stElementContainer"]:has(.setta-sidebar){
+  margin:0!important;
+  padding:0!important;
+}
+.setta-sidebar{
+  width:100%!important;
+  margin:0!important;
+  padding:0!important;
+  box-sizing:border-box!important;
+  font-family:inherit!important;
+}
+.setta-sidebar *{box-sizing:border-box!important}
+.sidebar-brand{
+  width:100%!important;
+  background:#f8fafc!important;
+  border:1px solid #e5e8ee!important;
+  border-radius:12px!important;
+  padding:14px 16px!important;
+  margin:0 0 20px 0!important;
+}
+.sidebar-brand-title{
+  margin:0!important;
+  padding:0!important;
+  font-size:15px!important;
+  font-weight:800!important;
+  line-height:18px!important;
+  color:#111827!important;
+  letter-spacing:-.01em!important;
+}
+.sidebar-brand-sub{
+  margin:3px 0 0 0!important;
+  padding:0!important;
+  font-size:12px!important;
+  font-weight:400!important;
+  line-height:16px!important;
+  color:#6b7280!important;
+}
+.sidebar-section-label{
+  display:block!important;
+  margin:0 0 8px 0!important;
+  padding:0!important;
+  color:#374151!important;
+  font-size:12px!important;
+  line-height:15px!important;
+  font-weight:800!important;
+  text-transform:uppercase!important;
+  letter-spacing:.055em!important;
+}
+.sidebar-nav{
+  display:flex!important;
+  flex-direction:column!important;
+  width:100%!important;
+  gap:2px!important;
+  margin:0!important;
+  padding:0!important;
+}
+.sidebar-nav-link{
+  position:relative!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  width:100%!important;
+  height:42px!important;
+  min-height:42px!important;
+  max-height:42px!important;
+  margin:0!important;
+  padding:0 12px 0 24px!important;
+  border:1px solid transparent!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  color:#374151!important;
+  text-decoration:none!important;
+  font-size:13px!important;
+  line-height:16px!important;
+  font-weight:500!important;
+  text-align:left!important;
+}
+.sidebar-nav-link:hover{
+  background:#f8fafc!important;
+  border-color:#e5e7eb!important;
+  color:#111827!important;
+  text-decoration:none!important;
+}
+.sidebar-nav-link.active{
+  background:#111827!important;
+  border-color:#111827!important;
+  color:#fff!important;
+  font-weight:700!important;
+  box-shadow:0 5px 14px rgba(17,24,39,.14)!important;
+}
+.sidebar-nav-link.active::before{
+  content:""!important;
+  position:absolute!important;
+  left:7px!important;
+  top:50%!important;
+  width:4px!important;
+  height:20px!important;
+  border-radius:999px!important;
+  background:#ef4444!important;
+  transform:translateY(-50%)!important;
+}
+.sidebar-divider{
+  display:block!important;
+  width:100%!important;
+  height:1px!important;
+  min-height:1px!important;
+  background:#d1d5db!important;
+  margin:20px 0!important;
+  padding:0!important;
+}
+.sidebar-status-card{
+  width:100%!important;
+  background:#f8fafc!important;
+  border:1px solid #e5e8ee!important;
+  border-radius:10px!important;
+  padding:12px 14px!important;
+  margin:0!important;
+  color:#6b7280!important;
+}
+.sidebar-status-name{
+  margin:0!important;
+  padding:0!important;
+  font-size:11px!important;
+  line-height:14px!important;
+  font-weight:800!important;
+  color:#64748b!important;
+  text-transform:uppercase!important;
+  letter-spacing:.025em!important;
+}
+.sidebar-status-value{
+  margin:4px 0 0 0!important;
+  padding:0!important;
+  font-size:13px!important;
+  line-height:16px!important;
+  font-weight:900!important;
+  text-transform:uppercase!important;
+}
+.sidebar-status-value.status-ok{color:#16a34a!important}
+.sidebar-status-value.status-warning{color:#f59e0b!important}
+.sidebar-status-value.status-error{color:#ef4444!important}
+.sidebar-status-meta{
+  margin:6px 0 0 0!important;
+  padding:0!important;
+  color:#6b7280!important;
+  font-size:11px!important;
+  line-height:15px!important;
+  text-transform:uppercase!important;
+}
+
 @media (max-width:900px){
   .block-container{padding-top:1rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}
   section[data-testid="stSidebar"]{min-width:260px!important;max-width:260px!important;width:260px!important;flex-basis:260px!important}
@@ -3293,9 +3410,9 @@ def _sidebar_operational_status():
     if ok_count == len(keys):
         status = "ATUALIZADO"
     elif has_error:
-        status = "ATENÇÃO"
+        status = "ERRO"
     else:
-        status = "AGUARDANDO"
+        status = "ATENÇÃO"
 
     latest = None
     for key in keys:
@@ -3312,58 +3429,60 @@ def _sidebar_operational_status():
     return status, latest_txt, ok_count, len(keys)
 
 
+_ENTREGA_NAV_SLUGS = {
+    "dashboard": "Dashboard",
+    "cronograma": "Cronograma",
+    "materiais": "Materiais",
+    "nfs": "NFs",
+    "historico": "Histórico",
+}
+
+_nav_param = str(st.query_params.get("nav") or "").strip().lower()
+if _nav_param in _ENTREGA_NAV_SLUGS:
+    st.session_state["main_navigation"] = _ENTREGA_NAV_SLUGS[_nav_param]
+
 page = str(st.session_state.get("main_navigation") or "Dashboard")
 if page not in _ENTREGA_NAV_PAGES:
     page = "Dashboard"
     st.session_state["main_navigation"] = page
 
+_sidebar_status, _sidebar_status_time, _sidebar_status_ok, _sidebar_status_total = _sidebar_operational_status()
+_sidebar_status_class = {
+    "ATUALIZADO": "status-ok",
+    "ATENÇÃO": "status-warning",
+    "ERRO": "status-error",
+}.get(_sidebar_status, "status-warning")
+
+_sidebar_links = []
+for _slug, _label in _ENTREGA_NAV_SLUGS.items():
+    _active = " active" if _label == page else ""
+    _sidebar_links.append(
+        f'<a class="sidebar-nav-link{_active}" href="?nav={_slug}" target="_self">{_label.upper()}</a>'
+    )
+
+_sidebar_html = (
+    '<div class="setta-sidebar">'
+    '<div class="sidebar-brand">'
+      '<div class="sidebar-brand-title">GESTÃO DE ENTREGAS</div>'
+      '<div class="sidebar-brand-sub">CONTROLE OPERACIONAL SETTA</div>'
+    '</div>'
+    '<div class="sidebar-section-label">NAVEGAÇÃO</div>'
+    '<div class="sidebar-nav">' + "".join(_sidebar_links) + '</div>'
+    '<div class="sidebar-divider"></div>'
+    '<div class="sidebar-section-label">STATUS GERAL</div>'
+    '<div class="sidebar-status-card">'
+      '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
+      f'<div class="sidebar-status-value {_sidebar_status_class}">{_sidebar_status}</div>'
+      '<div class="sidebar-status-meta">'
+        f'<div>ÚLTIMA ATUALIZAÇÃO: {_sidebar_status_time}</div>'
+        f'<div>QNT DE BASES: {_sidebar_status_ok}/{_sidebar_status_total}</div>'
+      '</div>'
+    '</div>'
+    '</div>'
+)
 
 with st.sidebar:
-    st.markdown(
-        '''<div class="sidebar-brand">
-            <div class="sidebar-brand-title">GESTÃO DE ENTREGAS</div>
-            <div class="sidebar-brand-sub">CONTROLE OPERACIONAL SETTA</div>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="sidebar-section-label">NAVEGAÇÃO</div>', unsafe_allow_html=True)
-    for _nav_page in _ENTREGA_NAV_PAGES:
-        st.button(
-            _nav_page.upper(),
-            key=f"entrega_nav_{_nav_page.lower().replace(' ', '_')}",
-            type="primary" if _nav_page == page else "secondary",
-            use_container_width=True,
-            on_click=_set_entrega_navigation,
-            args=(_nav_page,),
-        )
-
-    st.divider()
-    st.markdown('<div class="sidebar-status-spacer"></div>', unsafe_allow_html=True)
-    _sidebar_status, _sidebar_status_time, _sidebar_status_ok, _sidebar_status_total = _sidebar_operational_status()
-    st.markdown('<div class="sidebar-section-label">STATUS GERAL</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'''<div class="sidebar-status-card">
-            <div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>
-            <div class="sidebar-status-value">{_sidebar_status}</div>
-            <div class="sidebar-status-meta">ÚLTIMA ATUALIZAÇÃO {_sidebar_status_time} · {_sidebar_status_ok}/{_sidebar_status_total} FONTES OK</div>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-
-    st.divider()
-    st.markdown('<div class="sidebar-section-label">OPERADOR</div>', unsafe_allow_html=True)
-    _session_operator_input("Operador", "sidebar_operator")
-
-    st.divider()
-    st.markdown(
-        '''<div class="sidebar-info-card">
-            <b>CENTRAL DE DADOS</b><br>
-            ALIMENTAÇÃO AUTOMÁTICA<br>
-            FOR022 · RELATÓRIO MRP · NF
-        </div>''',
-        unsafe_allow_html=True,
-    )
+    st.markdown(_sidebar_html, unsafe_allow_html=True)
 
 
 if active_logo_data:
@@ -4877,8 +4996,8 @@ elif page == "NFs":
 
 elif page == "Histórico":
     section_band("01 · HISTÓRICO", "RASTREABILIDADE OPERACIONAL")
-    history_tab_general, history_tab_materials, history_tab_users, history_tab_archive, history_tab_feed = _lazy_tabs([
-        "HISTÓRICO GERAL", "MOVIMENTAÇÕES DE MATERIAIS", "GESTÃO DE USUÁRIOS", "CARGA HISTÓRICA", "ACOMPANHAMENTO DE API"
+    history_tab_general, history_tab_materials, history_tab_archive, history_tab_feed = _lazy_tabs([
+        "HISTÓRICO GERAL", "MOVIMENTAÇÕES DE MATERIAIS", "CARGA HISTÓRICA", "ACOMPANHAMENTO DE API"
     ], "historico_tabs")
     with history_tab_general:
         if _tab_visible(history_tab_general):
@@ -5983,98 +6102,6 @@ if globals().get("page") == "Histórico":
                     key="export_material_history",
                 )
 
-    with history_tab_users:
-        if _tab_visible(history_tab_users):
-            st.markdown("#### GESTÃO DE USUÁRIOS")
-            st.caption(
-                "Cadastre os nomes que poderão ser selecionados como operador nas ações do aplicativo. "
-                "A lista fica salva no Supabase e permanece disponível nas próximas sessões."
-            )
-
-            user_success = st.session_state.pop("_user_management_success", None)
-            if user_success:
-                st.success(user_success)
-
-            with st.form("novo_operador_form", clear_on_submit=True):
-                novo_operador = st.text_input(
-                    "Nome do usuário",
-                    placeholder="Ex.: João Silva",
-                    key="novo_operador_nome",
-                )
-                cadastrar_operador = st.form_submit_button(
-                    "Cadastrar usuário",
-                    use_container_width=True,
-                )
-
-            if cadastrar_operador:
-                nome_limpo = " ".join(str(novo_operador or "").split())
-                if len(nome_limpo) < 2:
-                    st.warning("Informe um nome válido antes de cadastrar.")
-                else:
-                    try:
-                        result = _supabase_api(
-                            "create_operator",
-                            {"nome": nome_limpo},
-                            timeout=20,
-                        ).get("data") or {}
-                        st.session_state["_operadores_sync"] = False
-                        _load_operator_options(force=True)
-                        st.session_state["_user_management_success"] = f"Usuário {nome_limpo} cadastrado."
-                        st.rerun()
-                    except Exception as exc:
-                        msg = str(exc)
-                        if "OPERADOR_JA_EXISTE" in msg:
-                            st.warning("Já existe um usuário cadastrado com esse nome.")
-                        else:
-                            st.error(f"Não foi possível cadastrar o usuário: {msg}")
-
-            operadores = _load_operator_options()
-            if not operadores:
-                st.info("Nenhum usuário operacional cadastrado.")
-            else:
-                operadores_df = pd.DataFrame(operadores)
-                usuarios_view = pd.DataFrame({
-                    "Usuário": operadores_df.get("nome", ""),
-                })
-                st.dataframe(
-                    usuarios_view,
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-                st.markdown("##### Excluir usuário")
-                ids_por_nome = {
-                    str(r.get("nome") or "").strip(): int(r.get("id"))
-                    for r in operadores
-                    if str(r.get("nome") or "").strip() and r.get("id") is not None
-                }
-                nome_excluir = st.selectbox(
-                    "Selecione o usuário",
-                    ["Selecione"] + list(ids_por_nome.keys()),
-                    key="usuario_excluir_select",
-                )
-                if st.button(
-                    "Excluir usuário",
-                    disabled=nome_excluir == "Selecione",
-                    key="usuario_excluir_botao",
-                ):
-                    try:
-                        _supabase_api(
-                            "delete_operator",
-                            {"id": ids_por_nome[nome_excluir]},
-                            timeout=20,
-                        )
-                        if _session_operator() == nome_excluir:
-                            st.session_state.pop("_operador_sessao", None)
-                        st.session_state["_operadores_sync"] = False
-                        _load_operator_options(force=True)
-                        for _k in ["core_bulk_user", "pcp_bulk_responsavel", "material_bulk_responsavel"]:
-                            st.session_state.pop(_k, None)
-                        st.session_state["_user_management_success"] = f"Usuário {nome_excluir} excluído."
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Não foi possível excluir o usuário: {exc}")
-
     with history_tab_archive:
         if _tab_visible(history_tab_archive):
             _render_historical_loader()
@@ -6082,13 +6109,4 @@ if globals().get("page") == "Histórico":
         if _tab_visible(history_tab_feed):
             _render_feeding_center()
 
-_sidebar_operator = _session_operator()
-if _sidebar_operator:
-    st.sidebar.caption(f"OPERADOR DA SESSÃO: {_sidebar_operator}")
-    if st.sidebar.button("TROCAR OPERADOR", key="trocar_operador_sessao"):
-        st.session_state.pop("_operador_sessao", None)
-        for _k in ["core_bulk_user", "pcp_bulk_responsavel", "material_bulk_responsavel"]:
-            st.session_state.pop(_k, None)
-        st.rerun()
 
-st.sidebar.caption("UI build 33")
