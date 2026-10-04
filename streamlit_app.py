@@ -6,6 +6,7 @@ from io import BytesIO
 import os
 import re
 import json
+import base64
 
 import pandas as pd
 import streamlit as st
