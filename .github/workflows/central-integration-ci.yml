@@ -22,7 +22,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: Compilar integração
         run: |
-          python -m py_compile streamlit_app.py central_entregas_data.py
+          python -m py_compile streamlit_app.py central_entregas_data.py setta_shell.py
       - name: Validar pontos da Central
         run: |
           python - <<'PY'
@@ -50,6 +50,11 @@ jobs:
           assert '"ui_config": row.get("ui_config") or {}' in central
           assert "HTTP_SESSION = requests.Session()" in app
           assert "requests.post(" not in app
+          assert "setta_shell.render_shell(" in app
+          assert "SETTA UI — App Shell Rounded V1" not in app
+          assert "st.markdown = _markdown_ui" not in app
+          assert "DeltaGenerator.metric" not in app
+          assert "DeltaGenerator.dataframe" not in app
           assert app.count("def _fmt_feed_datetime(value):") == 1
           assert app.count("def _fmt_feed_date(value):") == 1
           assert "_entrega_nav_query_consumed" in app
