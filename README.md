@@ -62,7 +62,11 @@ A integração de materiais com o Controle de NFs utiliza a infraestrutura de ba
 Arquivos principais:
 
 - `streamlit_app.py`: aplicação e regras de interface/operação;
+- `setta_shell.py`: moldura, header, sidebar e responsividade do Padrão SETTA;
+- `entrega_api.py`: transporte HTTP para RPCs e Edge Functions;
+- `setta_auth.py`: autenticação central integrada ao OperaHub;
 - `central_entregas_data.py`: acesso à Central SETTA, downloads normalizados e configuração visual;
+- `supabase/migrations/`: histórico das alterações de segurança e banco aplicadas;
 - `.streamlit/config.toml`: tema e configuração do Streamlit;
 - `config/logo_setta.svg`: fallback local da marca;
 - `.github/workflows/central-integration-ci.yml`: validação automática do app.
@@ -73,6 +77,16 @@ O deploy precisa disponibilizar as credenciais do Supabase por Secrets/variávei
 
 A identidade visual global é lida de `setta_app_visual_config` com `app_key = setta_global`.
 
-## Observação de segurança
+## Segurança e rastreabilidade
 
-O aplicativo ainda não possui autenticação central de usuário. As ações operacionais utilizam um responsável técnico padrão até a implantação do banco único de usuários e da autenticação SETTA.
+O aplicativo está integrado à autenticação central do OperaHub.
+
+- a política `login_required` do OperaHub define se o login é obrigatório;
+- quando o login é obrigatório, o app bloqueia as cargas operacionais até a autenticação;
+- ações auditáveis registram o nome do usuário autenticado;
+- quando a política central permite acesso sem login, o responsável técnico continua como `Sistema`;
+- se a política de autenticação não puder ser confirmada, o app adota comportamento fail-closed e solicita autenticação;
+- `entrega_mrp_resumo` possui RLS habilitado;
+- RPCs administrativas/legadas que não são usadas pelo app atual tiveram a execução de `anon`, `authenticated` e `PUBLIC` revogada.
+
+A etapa ainda pendente para endurecimento máximo é retirar a execução `anon` das RPCs operacionais que o app realmente utiliza. Para isso, as escritas deverão migrar para uma camada servidor autenticada (por exemplo, Edge Function/service role com sessão validada), evitando quebrar o fluxo atual.
