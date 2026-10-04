@@ -24,6 +24,7 @@ EDGE_ACTIONS = {
     "material_action_bulk",
     "material_history",
     "save_materials",
+    "save_materials_central",
 }
 
 DIRECT_RPC = {
