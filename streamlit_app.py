@@ -1564,6 +1564,11 @@ def _markdown_ui(body, *args, **kwargs):
           }
 """
 
+        # Preserva apenas estilos internos (KPIs/tabelas) da camada antiga.
+        # Moldura, header e sidebar pertencem exclusivamente ao shell SETTA canônico.
+        _internal_start = extra_css.find('.kpi-card {')
+        if _internal_start >= 0:
+            extra_css = extra_css[_internal_start:]
         body = body.replace('</style>', extra_css + '\n</style>')
 
     return _original_markdown(body, *args, **kwargs)
@@ -1719,6 +1724,84 @@ try:
     _GLOBAL_VISUAL_CONFIG = central_data.load_visual_config()
 except Exception:
     _GLOBAL_VISUAL_CONFIG = {}
+
+DEFAULT_SETTA_UI_CONFIG = {
+    "header": {
+        "enabled": True,
+        "min_height": 150,
+        "background": "#FFFFFF",
+        "border_color": "#E5E8EE",
+        "border_radius": 18,
+        "padding_y": 18,
+        "padding_x": 24,
+        "logo_max_width": 220,
+        "logo_max_height": 90,
+        "margin_bottom": 24,
+    },
+    "top_actions": {
+        "show_more": False,
+    },
+    "theme": {
+        "lock_light": True,
+        "app_background": "#F4F7FB",
+        "surface_background": "#FFFFFF",
+        "text_color": "#111827",
+    },
+}
+
+
+def _merge_setta_config(base, override):
+    result = {}
+    override = override if isinstance(override, dict) else {}
+    for key, value in base.items():
+        custom = override.get(key)
+        if isinstance(value, dict):
+            result[key] = _merge_setta_config(
+                value,
+                custom if isinstance(custom, dict) else {},
+            )
+        else:
+            result[key] = value if custom is None else custom
+    for key, value in override.items():
+        if key not in result:
+            result[key] = value
+    return result
+
+
+SETTA_UI_CONFIG = _merge_setta_config(
+    DEFAULT_SETTA_UI_CONFIG,
+    _GLOBAL_VISUAL_CONFIG.get("ui_config") or {},
+)
+HEADER_CONFIG = SETTA_UI_CONFIG["header"]
+TOP_ACTIONS_CONFIG = SETTA_UI_CONFIG["top_actions"]
+THEME_CONFIG = SETTA_UI_CONFIG["theme"]
+
+
+def _int_setta_cfg(value, default, minimum, maximum):
+    try:
+        return max(minimum, min(maximum, int(value)))
+    except Exception:
+        return default
+
+
+def _css_setta_color(value, default):
+    text = str(value or "").strip()
+    if len(text) in {4, 7, 9} and text.startswith("#"):
+        return text
+    return default
+
+
+def _setta_sidebar_is_open():
+    return bool(st.session_state.get("_setta_sidebar_open", False))
+
+
+def _setta_toggle_sidebar():
+    st.session_state["_setta_sidebar_open"] = not _setta_sidebar_is_open()
+
+
+def _setta_close_sidebar():
+    st.session_state["_setta_sidebar_open"] = False
+
 
 def _global_browser_icon():
     try:
@@ -3208,69 +3291,174 @@ def _logo_admin_password_valid(candidate):
 if st.session_state.pop("_clear_logo_admin_password", False):
     st.session_state.pop("_logo_admin_password_input", None)
 
+_header_height = _int_setta_cfg(HEADER_CONFIG.get("min_height"), 150, 90, 320)
+_header_radius = _int_setta_cfg(HEADER_CONFIG.get("border_radius"), 18, 0, 40)
+_header_padding_y = _int_setta_cfg(HEADER_CONFIG.get("padding_y"), 18, 0, 80)
+_header_padding_x = _int_setta_cfg(HEADER_CONFIG.get("padding_x"), 24, 0, 120)
+_logo_max_width = _int_setta_cfg(HEADER_CONFIG.get("logo_max_width"), 220, 80, 600)
+_logo_max_height = _int_setta_cfg(HEADER_CONFIG.get("logo_max_height"), 90, 40, 240)
+_header_margin_bottom = _int_setta_cfg(HEADER_CONFIG.get("margin_bottom"), 24, 0, 100)
+_header_background = _css_setta_color(HEADER_CONFIG.get("background"), "#FFFFFF")
+_header_border = _css_setta_color(HEADER_CONFIG.get("border_color"), "#E5E8EE")
+_app_background = _css_setta_color(THEME_CONFIG.get("app_background"), "#F4F7FB")
+_surface_background = _css_setta_color(THEME_CONFIG.get("surface_background"), "#FFFFFF")
+_text_color = _css_setta_color(THEME_CONFIG.get("text_color"), "#111827")
+
+# SETTA UI — Drawer Operacional V1
+_setta_sidebar_open = _setta_sidebar_is_open()
+if not _setta_sidebar_open:
+    st.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"]{display:none!important;}
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stSidebarCollapsedControl"],
+        button[data-testid="stSidebarCollapseButton"]{display:none!important;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stSidebarCollapsedControl"],
+        button[data-testid="stSidebarCollapseButton"]{display:none!important;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 st.markdown(
-    """
+    f"""
 <style>
-/* SETTA FINAL — PADRÃO CONTROLE DE NFS */
-[data-testid="stAppViewContainer"]{background:#f4f7fb!important}
-[data-testid="stHeader"]{background:rgba(255,255,255,.96)!important}
-.block-container{max-width:1780px!important;padding-top:1.25rem!important;padding-left:2.7rem!important;padding-right:2.7rem!important;padding-bottom:3rem!important;width:100%!important}
-section[data-testid="stSidebar"]{background:#fff!important;border-right:1px solid #e8ebf0!important;min-width:260px!important;max-width:260px!important;width:260px!important;flex-basis:260px!important}
-section[data-testid="stSidebar"] .block-container{padding-top:1.6rem!important;padding-left:1rem!important;padding-right:1rem!important}
-.sidebar-brand{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:12px!important;padding:.9rem 1rem!important;margin:0 0 1.05rem 0!important}
-.sidebar-brand-title{font-size:.92rem!important;font-weight:800!important;color:#111827!important;letter-spacing:-.01em!important;text-transform:uppercase!important}
-.sidebar-brand-sub{margin-top:.18rem!important;font-size:.75rem!important;color:#6b7280!important}
-.sidebar-section-label{margin:.25rem 0 .45rem!important;color:#374151!important;font-size:.76rem!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.055em!important}
-.sidebar-info-card{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:10px!important;padding:.75rem .85rem!important;color:#6b7280!important;font-size:.76rem!important;line-height:1.55!important;text-transform:uppercase!important}
-.sidebar-status-card{background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:10px!important;padding:.82rem .9rem!important;color:#6b7280!important;line-height:1.45!important}
-.sidebar-status-name{font-size:.7rem!important;font-weight:900!important;color:#64748b!important;text-transform:uppercase!important;letter-spacing:.025em!important}
-.sidebar-status-value{margin-top:.18rem!important;font-size:.86rem!important;font-weight:900!important;color:#111827!important;text-transform:uppercase!important}
-.sidebar-status-meta{margin-top:.28rem!important;color:#6b7280!important;font-size:.68rem!important;line-height:1.45!important;text-transform:uppercase!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"]{margin:0!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button{position:relative!important;min-height:42px!important;justify-content:flex-start!important;text-align:left!important;padding:.56rem .72rem .56rem calc(.88rem + 10px)!important;border-radius:10px!important;font-size:.83rem!important;font-weight:600!important;line-height:1.2!important;width:100%!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button > div{width:100%!important;text-align:left!important;justify-content:flex-start!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button p{width:100%!important;margin:0!important;text-align:left!important;text-transform:uppercase!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-secondary"]{background:transparent!important;border:1px solid transparent!important;color:#374151!important;box-shadow:none!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-secondary"]:hover{background:#f8fafc!important;border-color:#e5e7eb!important;color:#111827!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-primary"]{background:#111827!important;border:1px solid #111827!important;color:#fff!important;box-shadow:0 5px 14px rgba(17,24,39,.14)!important;font-weight:700!important}
-section[data-testid="stSidebar"] div[data-testid="stButton"] button[data-testid="stBaseButton-primary"]::before{content:"";position:absolute;left:.42rem;top:50%;width:4px;height:20px;border-radius:999px;background:#ef4444;transform:translateY(-50%)}
-section[data-testid="stSidebar"] div[data-testid="stElementContainer"]:has(div[data-testid="stButton"]){margin-bottom:-.45rem!important}
-.sidebar-status-spacer{height:.6rem!important;min-height:.6rem!important}
-section[data-testid="stSidebar"] div[role="radiogroup"]{display:flex!important;flex-direction:column!important;gap:.34rem!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
-section[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] + div{position:absolute!important;opacity:0!important;pointer-events:none!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] label{position:relative!important;width:100%!important;min-height:42px!important;display:flex!important;align-items:center!important;padding:.56rem .72rem .56rem .88rem!important;margin:0!important;border:1px solid transparent!important;border-radius:10px!important;background:transparent!important;cursor:pointer!important;box-sizing:border-box!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] label>div:first-child{position:absolute!important;opacity:0!important;width:0!important;height:0!important;overflow:hidden!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] label p{margin:0!important;font-size:.83rem!important;font-weight:600!important;color:#374151!important;line-height:1.2!important;text-transform:uppercase!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] label:hover{background:#f8fafc!important;border-color:#e5e7eb!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked){background:#111827!important;border-color:#111827!important;box-shadow:0 5px 14px rgba(17,24,39,.14)!important}
-section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)::before{content:"";position:absolute;left:.42rem;top:50%;width:4px;height:20px;border-radius:999px;background:#ef4444;transform:translateY(-50%)}
-section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p{color:#fff!important;font-weight:700!important}
-[data-testid="stAppViewContainer"] > .main,[data-testid="stAppViewContainer"] .main,[data-testid="stMain"],.stMain{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important}
-[data-testid="stAppViewContainer"] .main .block-container,[data-testid="stMain"] .block-container,.stMain .block-container{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important}
-section[data-testid="stSidebar"][aria-expanded="false"]{width:0!important;min-width:0!important;max-width:0!important;flex-basis:0!important}
-.setta-logo-card{width:100%!important;min-height:128px!important;display:flex!important;align-items:center!important;justify-content:center!important;background:#fff!important;border:1px solid #e5e8ee!important;border-radius:16px!important;box-shadow:0 4px 14px rgba(24,39,75,.08)!important;box-sizing:border-box!important;margin:0 0 2.55rem 0!important;padding:1.1rem 2rem!important}
-.setta-logo-card img{display:block!important;width:auto!important;height:auto!important;max-width:205px!important;max-height:86px!important;object-fit:contain!important}
-.app-title{margin:0!important;padding:0!important;font-size:2.55rem!important;line-height:1.08!important;font-weight:800!important;letter-spacing:-.04em!important;color:#050505!important;text-transform:uppercase!important}
-.app-sub{margin-top:.72rem!important;margin-bottom:1.65rem!important;color:#4f5661!important;font-size:.94rem!important;line-height:1.35!important;text-transform:uppercase!important}
-.section-band{margin:0 0 .95rem!important;padding:.82rem 1rem!important;background:#fff!important;border:1px solid #e5e8ee!important;border-left:5px solid #111827!important;border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
-.section-band-kicker{font-size:.66rem!important;font-weight:900!important;letter-spacing:.085em!important;text-transform:uppercase!important;color:#ef4444!important;margin-bottom:.18rem!important}
-.section-band-title{font-size:1.08rem!important;font-weight:900!important;color:#111827!important;letter-spacing:-.015em!important;line-height:1.2!important;text-transform:uppercase!important}
-.section-band-note{margin-top:.22rem!important;color:#667085!important;font-size:.75rem!important;line-height:1.35!important}
-.topic-divider{height:1px!important;background:#cbd5e1!important;margin:1.55rem 0 1.05rem!important;width:100%!important}
-[data-testid="stMetric"]{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:14px!important;box-shadow:0 4px 16px rgba(15,23,42,.055)!important;padding:1rem 1rem .9rem!important;min-height:112px!important;position:relative!important;overflow:hidden!important}
-[data-testid="stMetric"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#111827}
-[data-testid="stMetricLabel"] p{text-transform:uppercase!important;font-size:.72rem!important;font-weight:900!important;letter-spacing:.025em!important;color:#475569!important}
-[data-testid="stMetricValue"]{font-weight:800!important;color:#0f172a!important}
-[data-testid="stDataFrame"],[data-testid="stDataEditor"]{border:1px solid #dfe3e8!important;border-radius:14px!important;overflow:hidden!important;box-shadow:0 4px 16px rgba(15,23,42,.045)!important;background:#fff!important}
-[data-testid="stVerticalBlockBorderWrapper"]{border-color:#e5e8ee!important;border-radius:14px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
-[data-testid="stTabs"] button{font-weight:800!important;text-transform:uppercase!important;letter-spacing:.015em!important}
-div[data-testid="stMarkdownContainer"] h1,div[data-testid="stMarkdownContainer"] h2,div[data-testid="stMarkdownContainer"] h3,div[data-testid="stMarkdownContainer"] h4{text-transform:uppercase!important}
-[data-testid="stAlert"]{border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
-button[kind="primary"],button[data-testid="stBaseButton-primary"]{background:#111111!important;border-color:#111111!important;color:#fff!important}
-/* SIDEBAR SETTA V1 — PADRÃO VALIDADO
-   26 / 20 / 8 / 42 / 2 / 20 / 20 / 8 px */
-section[data-testid="stSidebar"] .block-container{
+/* SETTA UI — App Shell Rounded V1 · fonte: Conversor MRP */
+html,body,#root{{
+  height:100%!important;
+  min-height:100%!important;
+  max-height:100%!important;
+  overflow:hidden!important;
+}}
+html,body{{background:#EEF3F8!important}}
+body{{
+  box-sizing:border-box!important;
+  padding:18px!important;
+  margin:0!important;
+  overflow:hidden!important;
+}}
+.stApp,[data-testid="stApp"]{{
+  position:relative!important;
+  inset:auto!important;
+  width:calc(100vw - 36px)!important;
+  height:calc(100vh - 36px)!important;
+  min-height:0!important;
+  max-height:calc(100vh - 36px)!important;
+  max-width:1680px!important;
+  margin:0 auto!important;
+  border:1px solid rgba(202,214,228,.9)!important;
+  border-radius:24px!important;
+  overflow:hidden!important;
+  background:#F8FAFD!important;
+  box-shadow:0 24px 70px rgba(15,27,45,.13)!important;
+}}
+[data-testid="stAppViewContainer"]{{
+  position:relative!important;
+  inset:auto!important;
+  width:100%!important;
+  height:100%!important;
+  min-height:0!important;
+  max-height:100%!important;
+  border-radius:24px!important;
+  overflow:hidden!important;
+  background:{_app_background}!important;
+  color:{_text_color}!important;
+}}
+[data-testid="stMain"],.stMain,section.main{{
+  position:relative!important;
+  height:100%!important;
+  min-height:0!important;
+  max-height:100%!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  scrollbar-width:thin!important;
+  scrollbar-color:#CAD5E3 transparent!important;
+}}
+[data-testid="stMain"]::-webkit-scrollbar,.stMain::-webkit-scrollbar,section.main::-webkit-scrollbar{{width:9px!important}}
+[data-testid="stMain"]::-webkit-scrollbar-track,.stMain::-webkit-scrollbar-track,section.main::-webkit-scrollbar-track{{background:transparent!important}}
+[data-testid="stMain"]::-webkit-scrollbar-thumb,.stMain::-webkit-scrollbar-thumb,section.main::-webkit-scrollbar-thumb{{background:#CAD5E3!important;border-radius:999px!important}}
+[data-testid="stMainBlockContainer"],[data-testid="stAppViewBlockContainer"]{{
+  height:auto!important;
+  min-height:100%!important;
+  max-height:none!important;
+  overflow:visible!important;
+  padding-bottom:48px!important;
+}}
+[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],header[data-testid="stHeader"]{{
+  display:none!important;
+  visibility:hidden!important;
+  height:0!important;
+  min-height:0!important;
+  max-height:0!important;
+  margin:0!important;
+  padding:0!important;
+}}
+#MainMenu{{display:none!important}}
+.block-container{{
+  max-width:1780px!important;
+  padding-top:18px!important;
+  padding-left:2.7rem!important;
+  padding-right:2.7rem!important;
+  padding-bottom:32px!important;
+  width:100%!important;
+}}
+.st-key-setta_top_controls{{
+  position:absolute!important;
+  top:18px!important;
+  left:44px!important;
+  z-index:120!important;
+  width:82px!important;
+  margin:0!important;
+  padding:0!important;
+}}
+.st-key-setta_top_controls [data-testid="stVerticalBlock"]{{gap:0!important}}
+.st-key-setta_drawer_toggle{{width:82px!important;margin:0!important;padding:0!important}}
+.st-key-setta_drawer_toggle button{{
+  width:82px!important;
+  min-height:42px!important;
+  height:42px!important;
+  border-radius:10px!important;
+  padding:0!important;
+  background:rgba(255,255,255,.96)!important;
+  box-shadow:0 2px 8px rgba(15,23,42,.06)!important;
+}}
+section[data-testid="stSidebar"]{{
+  align-self:stretch!important;
+  height:100%!important;
+  min-height:100%!important;
+  max-height:100%!important;
+  background:{_surface_background}!important;
+  border-right:1px solid #e8ebf0!important;
+  border-radius:24px 0 0 24px!important;
+  width:260px!important;
+  min-width:260px!important;
+  max-width:260px!important;
+  flex:0 0 260px!important;
+  flex-basis:260px!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  scrollbar-width:thin!important;
+  scrollbar-color:#D6DEE8 transparent!important;
+}}
+section[data-testid="stSidebar"]>div{{
+  width:260px!important;
+  min-width:260px!important;
+  max-width:260px!important;
+  min-height:100%!important;
+  height:auto!important;
+  box-sizing:border-box!important;
+}}
+section[data-testid="stSidebar"] .block-container{{
   width:260px!important;
   min-width:260px!important;
   max-width:260px!important;
@@ -3278,168 +3466,114 @@ section[data-testid="stSidebar"] .block-container{
   padding-top:26px!important;
   padding-left:16px!important;
   padding-right:16px!important;
-}
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{
-  gap:0!important;
-  row-gap:0!important;
-}
-section[data-testid="stSidebar"] div[data-testid="stElementContainer"]:has(.setta-sidebar){
-  margin:0!important;
-  padding:0!important;
-}
-.setta-sidebar{
-  width:100%!important;
-  margin:0!important;
-  padding:0!important;
-  box-sizing:border-box!important;
-  font-family:inherit!important;
-}
-.setta-sidebar *{box-sizing:border-box!important}
-.sidebar-brand{
+}}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{gap:0!important;row-gap:0!important}}
+.sidebar-brand{{
   width:100%!important;
   background:#f8fafc!important;
   border:1px solid #e5e8ee!important;
   border-radius:12px!important;
   padding:14px 16px!important;
   margin:0 0 20px 0!important;
-}
-.sidebar-brand-title{
-  margin:0!important;
-  padding:0!important;
-  font-size:15px!important;
-  font-weight:800!important;
-  line-height:18px!important;
-  color:#111827!important;
-  letter-spacing:-.01em!important;
-}
-.sidebar-brand-sub{
-  margin:3px 0 0 0!important;
-  padding:0!important;
-  font-size:12px!important;
-  font-weight:400!important;
-  line-height:16px!important;
-  color:#6b7280!important;
-}
-.sidebar-section-label{
-  display:block!important;
-  margin:0 0 8px 0!important;
-  padding:0!important;
-  color:#374151!important;
-  font-size:12px!important;
-  line-height:15px!important;
-  font-weight:800!important;
-  text-transform:uppercase!important;
-  letter-spacing:.055em!important;
-}
-.sidebar-nav{
-  display:flex!important;
-  flex-direction:column!important;
+}}
+.sidebar-brand-title{{
+  margin:0!important;padding:0!important;font-size:15px!important;font-weight:800!important;
+  line-height:18px!important;color:#111827!important;letter-spacing:-.01em!important;
+}}
+.sidebar-brand-sub{{
+  margin:3px 0 0 0!important;padding:0!important;font-size:12px!important;font-weight:400!important;
+  line-height:16px!important;color:#6b7280!important;
+}}
+.sidebar-section-label{{
+  display:block!important;margin:0 0 8px 0!important;padding:0!important;color:#374151!important;
+  font-size:12px!important;line-height:15px!important;font-weight:800!important;
+  text-transform:uppercase!important;letter-spacing:.055em!important;
+}}
+section[data-testid="stSidebar"] div[data-testid="stElementContainer"]:has(.sidebar-section-label){{margin:0!important;padding:0!important}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"]{{margin:0 0 2px 0!important;padding:0!important}}
+section[data-testid="stSidebar"] .st-key-setta_nav_0{{margin-top:8px!important}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button{{
+  position:relative!important;width:100%!important;min-height:42px!important;height:42px!important;max-height:42px!important;
+  margin:0!important;padding:0 12px 0 24px!important;border-radius:10px!important;
+  justify-content:flex-start!important;text-align:left!important;box-shadow:none!important;
+}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button > div{{width:100%!important;justify-content:flex-start!important;text-align:left!important}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button p{{
+  width:100%!important;margin:0!important;padding:0!important;text-align:left!important;font-size:13px!important;line-height:16px!important;
+}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button[data-testid="stBaseButton-secondary"]{{
+  background:transparent!important;border:1px solid transparent!important;color:#374151!important;font-weight:500!important;
+}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button[data-testid="stBaseButton-secondary"]:hover{{
+  background:#f8fafc!important;border-color:#e5e7eb!important;color:#111827!important;
+}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button[data-testid="stBaseButton-primary"]{{
+  background:#111827!important;border:1px solid #111827!important;color:#fff!important;font-weight:700!important;
+  box-shadow:0 5px 14px rgba(17,24,39,.14)!important;
+}}
+section[data-testid="stSidebar"] [class*="st-key-setta_nav_"] button[data-testid="stBaseButton-primary"]::before{{
+  content:""!important;position:absolute!important;left:7px!important;top:50%!important;width:4px!important;height:20px!important;
+  border-radius:999px!important;background:#ef4444!important;transform:translateY(-50%)!important;
+}}
+.sidebar-divider{{display:block!important;width:100%!important;height:1px!important;min-height:1px!important;background:#d1d5db!important;margin:18px 0 20px 0!important;padding:0!important}}
+.sidebar-status-card{{width:100%!important;background:#f8fafc!important;border:1px solid #e5e8ee!important;border-radius:10px!important;padding:12px 14px!important;margin:0!important;color:#6b7280!important}}
+.sidebar-status-name{{margin:0!important;padding:0!important;font-size:11px!important;line-height:14px!important;font-weight:800!important;color:#64748b!important;text-transform:uppercase!important;letter-spacing:.025em!important}}
+.sidebar-status-value{{margin:4px 0 0 0!important;padding:0!important;font-size:13px!important;line-height:16px!important;font-weight:900!important;text-transform:uppercase!important}}
+.sidebar-status-value.status-ok{{color:#16a34a!important}}
+.sidebar-status-value.status-warning{{color:#f59e0b!important}}
+.sidebar-status-value.status-error{{color:#ef4444!important}}
+.sidebar-status-meta{{margin:6px 0 0 0!important;padding:0!important;color:#6b7280!important;font-size:11px!important;line-height:15px!important;text-transform:uppercase!important}}
+[data-testid="stAppViewContainer"] > .main,[data-testid="stAppViewContainer"] .main,[data-testid="stMain"],.stMain{{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important}}
+[data-testid="stAppViewContainer"] .main .block-container,[data-testid="stMain"] .block-container,.stMain .block-container{{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important}}
+section[data-testid="stSidebar"][aria-expanded="false"]{{width:0!important;min-width:0!important;max-width:0!important;flex:0 0 0!important;flex-basis:0!important}}
+section[data-testid="stSidebar"][aria-expanded="false"]>div{{width:0!important;min-width:0!important;max-width:0!important}}
+
+.setta-logo-card{{
   width:100%!important;
-  gap:2px!important;
-  margin:0!important;
-  padding:0!important;
-}
-.sidebar-nav-link{
-  position:relative!important;
+  min-height:{_header_height}px!important;
   display:flex!important;
   align-items:center!important;
-  justify-content:flex-start!important;
-  width:100%!important;
-  height:42px!important;
-  min-height:42px!important;
-  max-height:42px!important;
-  margin:0!important;
-  padding:0 12px 0 24px!important;
-  border:1px solid transparent!important;
-  border-radius:10px!important;
-  background:transparent!important;
-  color:#374151!important;
-  text-decoration:none!important;
-  font-size:13px!important;
-  line-height:16px!important;
-  font-weight:500!important;
-  text-align:left!important;
-}
-.sidebar-nav-link:hover{
-  background:#f8fafc!important;
-  border-color:#e5e7eb!important;
-  color:#111827!important;
-  text-decoration:none!important;
-}
-.sidebar-nav-link.active{
-  background:#111827!important;
-  border-color:#111827!important;
-  color:#fff!important;
-  font-weight:700!important;
-  box-shadow:0 5px 14px rgba(17,24,39,.14)!important;
-}
-.sidebar-nav-link.active::before{
-  content:""!important;
-  position:absolute!important;
-  left:7px!important;
-  top:50%!important;
-  width:4px!important;
-  height:20px!important;
-  border-radius:999px!important;
-  background:#ef4444!important;
-  transform:translateY(-50%)!important;
-}
-.sidebar-divider{
-  display:block!important;
-  width:100%!important;
-  height:1px!important;
-  min-height:1px!important;
-  background:#d1d5db!important;
-  margin:20px 0!important;
-  padding:0!important;
-}
-.sidebar-status-card{
-  width:100%!important;
-  background:#f8fafc!important;
-  border:1px solid #e5e8ee!important;
-  border-radius:10px!important;
-  padding:12px 14px!important;
-  margin:0!important;
-  color:#6b7280!important;
-}
-.sidebar-status-name{
-  margin:0!important;
-  padding:0!important;
-  font-size:11px!important;
-  line-height:14px!important;
-  font-weight:800!important;
-  color:#64748b!important;
-  text-transform:uppercase!important;
-  letter-spacing:.025em!important;
-}
-.sidebar-status-value{
-  margin:4px 0 0 0!important;
-  padding:0!important;
-  font-size:13px!important;
-  line-height:16px!important;
-  font-weight:900!important;
-  text-transform:uppercase!important;
-}
-.sidebar-status-value.status-ok{color:#16a34a!important}
-.sidebar-status-value.status-warning{color:#f59e0b!important}
-.sidebar-status-value.status-error{color:#ef4444!important}
-.sidebar-status-meta{
-  margin:6px 0 0 0!important;
-  padding:0!important;
-  color:#6b7280!important;
-  font-size:11px!important;
-  line-height:15px!important;
-  text-transform:uppercase!important;
-}
+  justify-content:center!important;
+  background:{_header_background}!important;
+  border:1px solid {_header_border}!important;
+  border-radius:{_header_radius}px!important;
+  box-shadow:0 4px 14px rgba(24,39,75,.08)!important;
+  box-sizing:border-box!important;
+  margin:0 0 {_header_margin_bottom}px 0!important;
+  padding:{_header_padding_y}px {_header_padding_x}px!important;
+}}
+.setta-logo-card img{{display:block!important;width:auto!important;height:auto!important;max-width:{_logo_max_width}px!important;max-height:{_logo_max_height}px!important;object-fit:contain!important}}
+.app-title{{margin:0!important;padding:0!important;font-size:2.55rem!important;line-height:1.08!important;font-weight:800!important;letter-spacing:-.04em!important;color:#050505!important;text-transform:uppercase!important}}
+.app-sub{{margin-top:.72rem!important;margin-bottom:1.65rem!important;color:#4f5661!important;font-size:.94rem!important;line-height:1.35!important;text-transform:uppercase!important}}
 
-@media (max-width:900px){
-  .block-container{padding-top:1rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}
-  section[data-testid="stSidebar"]{min-width:260px!important;max-width:260px!important;width:260px!important;flex-basis:260px!important}
-  .setta-logo-card{min-height:105px!important;margin-bottom:1.8rem!important;padding:.9rem 1rem!important}
-  .setta-logo-card img{max-width:170px!important;max-height:72px!important}
-  .app-title{font-size:2rem!important;line-height:1.12!important}
-  .app-sub{font-size:.86rem!important;margin-bottom:1.35rem!important}
-}
+/* Conteúdo interno do Gestão de Entregas — preservado */
+.section-band{{margin:0 0 .95rem!important;padding:.82rem 1rem!important;background:#fff!important;border:1px solid #e5e8ee!important;border-left:5px solid #111827!important;border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}}
+.section-band-kicker{{font-size:.66rem!important;font-weight:900!important;letter-spacing:.085em!important;text-transform:uppercase!important;color:#ef4444!important;margin-bottom:.18rem!important}}
+.section-band-title{{font-size:1.08rem!important;font-weight:900!important;color:#111827!important;letter-spacing:-.015em!important;line-height:1.2!important;text-transform:uppercase!important}}
+.section-band-note{{margin-top:.22rem!important;color:#667085!important;font-size:.75rem!important;line-height:1.35!important}}
+.topic-divider{{height:1px!important;background:#cbd5e1!important;margin:1.55rem 0 1.05rem!important;width:100%!important}}
+[data-testid="stMetric"]{{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:14px!important;box-shadow:0 4px 16px rgba(15,23,42,.055)!important;padding:1rem 1rem .9rem!important;min-height:112px!important;position:relative!important;overflow:hidden!important}}
+[data-testid="stMetric"]::before{{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#111827}}
+[data-testid="stMetricLabel"] p{{text-transform:uppercase!important;font-size:.72rem!important;font-weight:900!important;letter-spacing:.025em!important;color:#475569!important}}
+[data-testid="stMetricValue"]{{font-weight:800!important;color:#0f172a!important}}
+[data-testid="stDataFrame"],[data-testid="stDataEditor"]{{border:1px solid #dfe3e8!important;border-radius:14px!important;overflow:hidden!important;box-shadow:0 4px 16px rgba(15,23,42,.045)!important;background:#fff!important}}
+[data-testid="stVerticalBlockBorderWrapper"]{{border-color:#e5e8ee!important;border-radius:14px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}}
+[data-testid="stTabs"] button{{font-weight:800!important;text-transform:uppercase!important;letter-spacing:.015em!important}}
+div[data-testid="stMarkdownContainer"] h1,div[data-testid="stMarkdownContainer"] h2,div[data-testid="stMarkdownContainer"] h3,div[data-testid="stMarkdownContainer"] h4{{text-transform:uppercase}}
+[data-testid="stAlert"]{{border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}}
+button[kind="primary"],button[data-testid="stBaseButton-primary"]{{background:#111827!important;border-color:#111827!important;color:#fff!important}}
+
+@media(max-width:900px){{
+  html,body,#root{{height:auto!important;min-height:100%!important;max-height:none!important;overflow-y:auto!important}}
+  body{{padding:0!important;background:#F5F8FC!important;overflow-y:auto!important}}
+  .stApp,[data-testid="stApp"]{{width:100vw!important;height:auto!important;min-height:100vh!important;max-height:none!important;max-width:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;overflow:visible!important}}
+  [data-testid="stAppViewContainer"],[data-testid="stMain"],.stMain{{height:auto!important;min-height:100vh!important;max-height:none!important;overflow:visible!important;border-radius:0!important}}
+  .block-container{{padding-top:2rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}}
+  .setta-logo-card{{min-height:105px!important;margin-bottom:1.8rem!important;padding:.9rem 1rem!important}}
+  .setta-logo-card img{{max-width:170px!important;max-height:72px!important}}
+  .app-title{{font-size:2rem!important;line-height:1.12!important}}
+  .app-sub{{font-size:.86rem!important;margin-bottom:1.35rem!important}}
+}}
 </style>
 """,
     unsafe_allow_html=True,
@@ -3451,6 +3585,7 @@ _ENTREGA_NAV_PAGES = ["Dashboard", "Cronograma", "Materiais", "NFs", "Histórico
 def _set_entrega_navigation(target):
     if target in _ENTREGA_NAV_PAGES:
         st.session_state["main_navigation"] = target
+        _setta_close_sidebar()
 
 
 def _sidebar_operational_status():
@@ -3511,36 +3646,47 @@ _sidebar_status_class = {
     "ERRO": "status-error",
 }.get(_sidebar_status, "status-warning")
 
-_sidebar_links = []
-for _slug, _label in _ENTREGA_NAV_SLUGS.items():
-    _active = " active" if _label == page else ""
-    _sidebar_links.append(
-        f'<a class="sidebar-nav-link{_active}" href="?nav={_slug}" target="_self">{_label.upper()}</a>'
+with st.sidebar:
+    st.markdown(
+        '<div class="sidebar-brand">'
+        '<div class="sidebar-brand-title">GESTÃO DE ENTREGAS</div>'
+        '<div class="sidebar-brand-sub">CONTROLE OPERACIONAL SETTA</div>'
+        '</div>'
+        '<div class="sidebar-section-label">NAVEGAÇÃO</div>',
+        unsafe_allow_html=True,
     )
-
-_sidebar_html = (
-    '<div class="setta-sidebar">'
-    '<div class="sidebar-brand">'
-      '<div class="sidebar-brand-title">GESTÃO DE ENTREGAS</div>'
-      '<div class="sidebar-brand-sub">CONTROLE OPERACIONAL SETTA</div>'
-    '</div>'
-    '<div class="sidebar-section-label">NAVEGAÇÃO</div>'
-    '<div class="sidebar-nav">' + "".join(_sidebar_links) + '</div>'
-    '<div class="sidebar-divider"></div>'
-    '<div class="sidebar-section-label">STATUS GERAL</div>'
-    '<div class="sidebar-status-card">'
-      '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
-      f'<div class="sidebar-status-value {_sidebar_status_class}">{_sidebar_status}</div>'
-      '<div class="sidebar-status-meta">'
+    for _nav_index, _label in enumerate(_ENTREGA_NAV_PAGES):
+        st.button(
+            _label.upper(),
+            key=f"setta_nav_{_nav_index}",
+            type="primary" if _label == page else "secondary",
+            use_container_width=True,
+            on_click=_set_entrega_navigation,
+            args=(_label,),
+        )
+    st.markdown(
+        '<div class="sidebar-divider"></div>'
+        '<div class="sidebar-section-label">STATUS GERAL</div>'
+        '<div class="sidebar-status-card">'
+        '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
+        f'<div class="sidebar-status-value {_sidebar_status_class}">{_sidebar_status}</div>'
+        '<div class="sidebar-status-meta">'
         f'<div>ÚLTIMA ATUALIZAÇÃO: {_sidebar_status_time}</div>'
         f'<div>QNT DE BASES: {_sidebar_status_ok}/{_sidebar_status_total}</div>'
-      '</div>'
-    '</div>'
-    '</div>'
-)
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
 
-with st.sidebar:
-    st.markdown(_sidebar_html, unsafe_allow_html=True)
+
+# SETTA UI — Top Controls V1
+with st.container(key="setta_top_controls"):
+    st.button(
+        "☰",
+        key="setta_drawer_toggle",
+        help="Abrir/fechar menu",
+        use_container_width=True,
+        on_click=_setta_toggle_sidebar,
+    )
 
 
 if active_logo_data:
