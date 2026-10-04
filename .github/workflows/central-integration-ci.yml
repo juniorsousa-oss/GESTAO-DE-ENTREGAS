@@ -6,6 +6,8 @@ on:
     paths:
       - 'streamlit_app.py'
       - 'central_entregas_data.py'
+      - 'setta_shell.py'
+      - 'entrega_api.py'
       - 'requirements.txt'
       - '.github/workflows/central-integration-ci.yml'
   workflow_dispatch:
@@ -43,12 +45,13 @@ jobs:
           assert 'with st.spinner("VERIFICANDO E ATUALIZANDO CRONOGRAMA, MATERIAIS E NFS...")' not in app
           assert 'row.get("source_updated_at") or row.get("synced_at")' in app
           assert "ÚLTIMA ATUALIZAÇÃO" in app
-          assert "SETTA UI — App Shell Rounded V1" in app
           assert 'key="setta_drawer_toggle"' in app
-          assert "max-width:1680px!important" in app
-          assert "width:260px!important" in app
           assert '"ui_config": row.get("ui_config") or {}' in central
+          shell = Path("setta_shell.py").read_text(encoding="utf-8")
           api = Path("entrega_api.py").read_text(encoding="utf-8")
+          assert "SETTA UI — App Shell Rounded V1" in shell
+          assert "max-width:1680px!important" in shell
+          assert "width:260px!important" in shell
           assert "entrega_api.call(" in app
           assert "HTTP_SESSION = requests.Session()" in api
           assert "requests.post(" not in app
