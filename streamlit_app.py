@@ -59,11 +59,7 @@ DEFAULT_AUDIT_RESPONSIBLE = "Sistema"
 
 
 CACHE_INVALIDATING_ACTIONS = {
-    "save_logo",
-    "save_button_color",
     "save_nfs",
-    "create_operator",
-    "delete_operator",
     "historical_load",
     "current_load",
     "update_status_bulk",
@@ -105,16 +101,20 @@ def _setta_auth_bootstrap_cached(anon_key):
 def _setta_login_required():
     key = _supabase_anon_key()
     if not key:
-        return False
+        st.session_state["_setta_auth_policy_error"] = "SUPABASE_ANON_KEY não configurada."
+        return True
     try:
         payload = _setta_auth_bootstrap_cached(key)
         settings = payload.get("settings") if isinstance(payload, dict) else {}
         required = bool((settings or {}).get("login_required", False))
         st.session_state["_setta_auth_required"] = required
+        st.session_state.pop("_setta_auth_policy_error", None)
         return required
     except Exception as exc:
         st.session_state["_setta_auth_policy_error"] = str(exc)
-        return bool(st.session_state.get("_setta_auth_required", False))
+        # Segurança: se a política central não puder ser confirmada, não libera
+        # uma sessão anônima por padrão.
+        return True
 
 
 def _render_setta_auth_gate():
@@ -132,6 +132,12 @@ def _render_setta_auth_gate():
         '</div>',
         unsafe_allow_html=True,
     )
+    policy_error = st.session_state.get("_setta_auth_policy_error")
+    if policy_error:
+        st.warning(
+            "Não foi possível confirmar a política central de acesso. "
+            "Por segurança, o aplicativo permanece bloqueado até a autenticação."
+        )
 
     with st.form("setta_auth_login_form", clear_on_submit=False):
         login = st.text_input("USUÁRIO OU E-MAIL", key="_setta_auth_login")
@@ -432,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 102
+APP_BUILD = 103
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
