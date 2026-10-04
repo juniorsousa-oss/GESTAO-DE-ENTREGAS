@@ -17,6 +17,9 @@ import central_entregas_data as central_data
 
 SUPABASE_EDGE_URL = "https://cuixazpxkvniqldmmnth.supabase.co/functions/v1/entrega-cronograma-api"
 
+HTTP_SESSION = requests.Session()
+HTTP_SESSION.headers.update({"Connection": "keep-alive"})
+
 
 AUDIT_RESPONSIBLE_ACTIONS = {
     "update_status_bulk",
@@ -179,7 +182,7 @@ def _supabase_api(action, payload=None, timeout=45):
         elif action == "delete_operator":
             source = payload or {}
             rpc_payload = {"p_id": int(source.get("id", 0) or 0)}
-        response = requests.post(
+        response = HTTP_SESSION.post(
             rpc_url,
             headers=headers,
             json=rpc_payload,
@@ -195,7 +198,7 @@ def _supabase_api(action, payload=None, timeout=45):
             _clear_shared_read_cache()
         return {"data": data or []}
 
-    response = requests.post(
+    response = HTTP_SESSION.post(
         SUPABASE_EDGE_URL,
         headers=headers,
         json={"action": action, "payload": payload or {}},
@@ -238,7 +241,7 @@ def _normalizar_datas_cronograma(frame):
     """Exibe a inclusão quando ainda não houve alteração posterior da separação."""
     for col in ["data_separacao", "primeira_aparicao", "ultima_alteracao_cronograma", "ultima_alteracao_equipe"]:
         if col in frame.columns:
-            frame[col] = pd.to_datetime(frame[col], errors="coerce").dt.date
+            frame[col] = pd.to_datetime(frame[col], errors="coerce", format="mixed").dt.date
     if "primeira_aparicao" in frame.columns:
         if "ultima_alteracao_cronograma" in frame.columns:
             frame["ultima_alteracao_cronograma"] = (
@@ -442,12 +445,12 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 94
+APP_BUILD = 95
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
         "_entrega_feed_status_sync", "_nf_meta_cache", "_nf_filter_meta_cache",
-        "_materiais_view_cache", "_entrega_startup_central_checked",
+        "_materiais_view_cache",
     ]:
         st.session_state.pop(_key, None)
     _clear_shared_read_cache()
@@ -1905,7 +1908,7 @@ def normalize_op(value):
 
 
 def parse_dates(series):
-    return pd.to_datetime(series, errors="coerce", dayfirst=True).dt.date
+    return pd.to_datetime(series, errors="coerce", dayfirst=True, format="mixed").dt.date
 
 
 def fmt_date(value):
@@ -3136,11 +3139,9 @@ def _style_operational_rows(df):
         return [css] * len(row)
     return df.style.apply(style_row, axis=1)
 
-if not st.session_state.get("_entrega_startup_central_checked"):
-    st.session_state["_entrega_startup_central_checked"] = True
-    _sync_central_operational_feeds(force=True)
-else:
-    _sync_central_operational_feeds(force=False)
+# A Central já usa tokens de versão + cache curto. No startup não é necessário
+# invalidar caches globais; downloads e conversões só ocorrem quando a versão mudou.
+_sync_central_operational_feeds(force=False)
 
 logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
 default_logo_data = ""
@@ -3154,8 +3155,6 @@ app_config = st.session_state.get("_entrega_app_config", {})
 if not isinstance(app_config, dict):
     app_config = {}
 
-saved_logo_data = str(app_config.get("logo_data") or "").strip()
-saved_logo_mime = str(app_config.get("logo_mime") or "image/png").strip() or "image/png"
 
 _global_logo_data = str(_GLOBAL_VISUAL_CONFIG.get("logo_data") or "").strip()
 _global_logo_mime = str(_GLOBAL_VISUAL_CONFIG.get("logo_mime") or "image/png").strip() or "image/png"
@@ -3614,9 +3613,11 @@ _ENTREGA_NAV_SLUGS = {
     "historico": "Histórico",
 }
 
-_nav_param = str(st.query_params.get("nav") or "").strip().lower()
-if _nav_param in _ENTREGA_NAV_SLUGS:
-    st.session_state["main_navigation"] = _ENTREGA_NAV_SLUGS[_nav_param]
+if not st.session_state.get("_entrega_nav_query_consumed"):
+    _nav_param = str(st.query_params.get("nav") or "").strip().lower()
+    if _nav_param in _ENTREGA_NAV_SLUGS:
+        st.session_state["main_navigation"] = _ENTREGA_NAV_SLUGS[_nav_param]
+    st.session_state["_entrega_nav_query_consumed"] = True
 
 page = str(st.session_state.get("main_navigation") or "Dashboard")
 if page not in _ENTREGA_NAV_PAGES:
@@ -5392,34 +5393,6 @@ def _sync_feed_status(force=False):
     except Exception as exc:
         st.session_state["_entrega_feed_status_error"] = str(exc)
         return st.session_state.get("_entrega_feed_status", {})
-
-
-def _fmt_feed_datetime(value):
-    if not value:
-        return ""
-    try:
-        ts = pd.to_datetime(value, errors="coerce", utc=True)
-        if pd.isna(ts):
-            return ""
-        try:
-            ts = ts.tz_convert(TZ)
-        except Exception:
-            pass
-        return ts.strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        return ""
-
-
-def _fmt_feed_date(value):
-    if not value:
-        return ""
-    try:
-        d = pd.to_datetime(value, errors="coerce")
-        if pd.isna(d):
-            return ""
-        return d.strftime("%d/%m/%Y")
-    except Exception:
-        return ""
 
 
 def _render_last_feed_load(kind):
