@@ -242,7 +242,7 @@ def download_derived_frame(
     return pd.read_json(io.BytesIO(raw), orient="table")
 
 
-@st.cache_data(show_spinner=False, ttl=60, max_entries=2)
+@st.cache_data(show_spinner=False, ttl=900, max_entries=2)
 def load_visual_config() -> dict:
     row = central_api(
         "visual_get",
