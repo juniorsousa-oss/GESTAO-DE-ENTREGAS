@@ -41,7 +41,10 @@ jobs:
           assert "VERIFICANDO E ATUALIZANDO CRONOGRAMA, MATERIAIS E NFS" in app
           assert 'row.get("source_updated_at") or row.get("synced_at")' in app
           assert "ÚLTIMA ATUALIZAÇÃO" in app
-          assert "sidebar-status-spacer" in app
-          assert "margin-bottom:-.45rem!important" in app
+          assert "SETTA UI — App Shell Rounded V1" in app
+          assert 'key="setta_drawer_toggle"' in app
+          assert "max-width:1680px!important" in app
+          assert "width:260px!important" in app
+          assert '"ui_config": row.get("ui_config") or {}' in central
           print("CENTRAL_ENTREGAS_COMPILE_OK")
           PY
