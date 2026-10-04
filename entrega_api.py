@@ -12,6 +12,20 @@ SUPABASE_EDGE_URL = f"{SUPABASE_PROJECT_URL}/functions/v1/entrega-cronograma-api
 HTTP_SESSION = requests.Session()
 HTTP_SESSION.headers.update({"Connection": "keep-alive"})
 
+EDGE_ACTIONS = {
+    "historical_load",
+    "central_sync_status",
+    "central_sync_commit",
+    "central_current_load",
+    "current_load",
+    "update_status_bulk",
+    "team_action",
+    "close_pcp_bulk",
+    "material_action_bulk",
+    "material_history",
+    "save_materials",
+}
+
 DIRECT_RPC = {
     "bootstrap": "entrega_bootstrap_v2",
     "list_current": "entrega_listar_cronograma_v2",
@@ -101,6 +115,9 @@ def call(key, action, payload=None, timeout=45):
                 or f"Erro HTTP {response.status_code}"
             )
         return {"data": data or []}
+
+    if action not in EDGE_ACTIONS:
+        raise RuntimeError(f"Ação de API não registrada: {action}")
 
     response = HTTP_SESSION.post(
         SUPABASE_EDGE_URL,
