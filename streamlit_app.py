@@ -224,7 +224,7 @@ def _shared_cached_read(action, payload_json="{}", timeout=45):
 def _cached_supabase_read(action, payload=None, timeout=45, force=False):
     payload_json = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True, default=str)
     if force:
-        _shared_cached_read.clear()
+        return _supabase_api(action, payload or None, timeout=timeout)
     return _shared_cached_read(action, payload_json, timeout)
 
 
@@ -444,7 +444,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 96
+APP_BUILD = 97
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -454,8 +454,6 @@ if st.session_state.get("_entrega_app_build") != APP_BUILD:
         st.session_state.pop(_key, None)
     _clear_shared_read_cache()
     st.session_state["_entrega_app_build"] = APP_BUILD
-
-_sync_bootstrap_from_supabase()
 
 
 def _sync_material_summary_from_supabase(force=False):
@@ -2071,10 +2069,6 @@ def _style_operational_rows(df):
         return [css] * len(row)
     return df.style.apply(style_row, axis=1)
 
-# A Central já usa tokens de versão + cache curto. No startup não é necessário
-# invalidar caches globais; downloads e conversões só ocorrem quando a versão mudou.
-_sync_central_operational_feeds(force=False)
-
 logo_path = Path(__file__).parent / "config" / "logo_setta.svg"
 default_logo_data = ""
 default_logo_mime = "image/svg+xml"
@@ -2576,13 +2570,6 @@ if page not in _ENTREGA_NAV_PAGES:
     page = "Dashboard"
     st.session_state["main_navigation"] = page
 
-_sidebar_status, _sidebar_status_time, _sidebar_status_ok, _sidebar_status_total = _sidebar_operational_status()
-_sidebar_status_class = {
-    "ATUALIZADO": "status-ok",
-    "ATENÇÃO": "status-warning",
-    "ERRO": "status-error",
-}.get(_sidebar_status, "status-warning")
-
 with st.sidebar:
     st.markdown(
         '<div class="sidebar-brand">'
@@ -2603,16 +2590,10 @@ with st.sidebar:
         )
     st.markdown(
         '<div class="sidebar-divider"></div>'
-        '<div class="sidebar-section-label">STATUS GERAL</div>'
-        '<div class="sidebar-status-card">'
-        '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
-        f'<div class="sidebar-status-value {_sidebar_status_class}">{_sidebar_status}</div>'
-        '<div class="sidebar-status-meta">'
-        f'<div>ÚLTIMA ATUALIZAÇÃO: {_sidebar_status_time}</div>'
-        f'<div>QNT DE BASES: {_sidebar_status_ok}/{_sidebar_status_total}</div>'
-        '</div></div>',
+        '<div class="sidebar-section-label">STATUS GERAL</div>',
         unsafe_allow_html=True,
     )
+    _sidebar_status_slot = st.empty()
 
 
 # SETTA UI — Top Controls V1
@@ -2638,6 +2619,28 @@ st.markdown(
 st.markdown('<h1 class="app-title">GESTÃO DE ENTREGAS | SETTA</h1>', unsafe_allow_html=True)
 st.markdown(
     '<p class="app-sub">CRONOGRAMA • MATERIAIS • NFS • HISTÓRICO</p>',
+    unsafe_allow_html=True,
+)
+
+# Operações de rede são executadas somente depois que o shell SETTA foi emitido.
+# O usuário recebe moldura, navegação e cabeçalho antes das sincronizações.
+_sync_bootstrap_from_supabase()
+_sync_central_operational_feeds(force=False)
+
+_sidebar_status, _sidebar_status_time, _sidebar_status_ok, _sidebar_status_total = _sidebar_operational_status()
+_sidebar_status_class = {
+    "ATUALIZADO": "status-ok",
+    "ATENÇÃO": "status-warning",
+    "ERRO": "status-error",
+}.get(_sidebar_status, "status-warning")
+_sidebar_status_slot.markdown(
+    '<div class="sidebar-status-card">'
+    '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
+    f'<div class="sidebar-status-value {_sidebar_status_class}">{_sidebar_status}</div>'
+    '<div class="sidebar-status-meta">'
+    f'<div>ÚLTIMA ATUALIZAÇÃO: {_sidebar_status_time}</div>'
+    f'<div>QNT DE BASES: {_sidebar_status_ok}/{_sidebar_status_total}</div>'
+    '</div></div>',
     unsafe_allow_html=True,
 )
 
