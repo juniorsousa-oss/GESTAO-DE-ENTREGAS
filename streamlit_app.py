@@ -7,19 +7,13 @@ import hmac
 import json
 
 import pandas as pd
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from PIL import Image
 
 import central_entregas_data as central_data
 import setta_shell
-
-SUPABASE_EDGE_URL = "https://cuixazpxkvniqldmmnth.supabase.co/functions/v1/entrega-cronograma-api"
-
-HTTP_SESSION = requests.Session()
-HTTP_SESSION.headers.update({"Connection": "keep-alive"})
-
+import entrega_api
 
 AUDIT_RESPONSIBLE_ACTIONS = {
     "update_status_bulk",
@@ -93,127 +87,15 @@ def _supabase_api(action, payload=None, timeout=45):
             payload.get("responsavel") or DEFAULT_AUDIT_RESPONSIBLE
         ).strip() or DEFAULT_AUDIT_RESPONSIBLE
 
-    key = _supabase_anon_key()
-    if not key:
-        raise RuntimeError("SUPABASE_ANON_KEY não configurada nos Secrets do Streamlit.")
-
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "apikey": key,
-        "Content-Type": "application/json",
-    }
-
-    # Leituras simples vão direto ao PostgREST/RPC. Isso evita consumo
-    # desnecessário de Edge Functions e reduz risco de atingir a cota.
-    direct_rpc = {
-        "bootstrap": "entrega_bootstrap_v2",
-        "list_current": "entrega_listar_cronograma_v2",
-        "list_imports": "entrega_listar_importacoes",
-        "load_materials": "entrega_listar_mrp_atual",
-        "load_material_view": "entrega_materiais_consulta",
-        "load_material_summary": "entrega_listar_mrp_resumo",
-        "load_material_ops": "entrega_listar_mrp_operacoes",
-        "list_daily_alerts": "entrega_listar_alertas_diarios_v2",
-        "save_logo": "entrega_salvar_logo",
-        "save_button_color": "entrega_salvar_cor_botoes",
-        "load_nf_summary": "entrega_nf_resumo",
-        "load_nf_filters": "entrega_nf_filtros",
-        "load_nfs": "entrega_listar_nf_filtrada",
-        "save_nfs": "entrega_salvar_nf_atual",
-        "export_nfs": "entrega_exportar_nf_atual_v2",
-        "load_feed_status": "entrega_cargas_resumo",
-        "list_operators": "entrega_listar_operadores",
-        "create_operator": "entrega_criar_operador",
-        "delete_operator": "entrega_excluir_operador",
-    }
-    if action in direct_rpc:
-        rpc_url = f"https://cuixazpxkvniqldmmnth.supabase.co/rest/v1/rpc/{direct_rpc[action]}"
-        rpc_payload = {}
-        if action == "save_logo":
-            source = payload or {}
-            rpc_payload = {
-                "p_logo_data": source.get("logo_data"),
-                "p_logo_mime": source.get("logo_mime"),
-            }
-        elif action == "save_button_color":
-            source = payload or {}
-            rpc_payload = {"p_button_color": source.get("button_color") or "#111111"}
-        elif action == "load_material_view":
-            source = payload or {}
-            rpc_payload = {
-                "p_ops_pendencia": source.get("ops_pendencia") or [],
-                "p_condicao": source.get("condicao") or None,
-                "p_projeto": source.get("projeto") or None,
-                "p_prioridade": source.get("prioridade") or None,
-                "p_limit": int(source.get("limit", 80) or 80),
-                "p_data_campo": source.get("data_campo") or None,
-                "p_data": source.get("data") or None,
-                "p_busca": source.get("busca") or None,
-            }
-        elif action == "list_daily_alerts":
-            source = payload or {}
-            rpc_payload = {
-                "p_limit": int(source.get("limit", 100) or 100),
-                "p_data": source.get("data") or None,
-                "p_op": source.get("op") or None,
-            }
-        elif action == "load_nfs":
-            source = payload or {}
-            rpc_payload = {
-                "p_limit": int(source.get("limit", 500) or 500),
-                "p_classificacao": source.get("classificacao") or None,
-                "p_data": source.get("data") or None,
-                "p_natureza": source.get("natureza") or None,
-                "p_documento": source.get("documento") or None,
-                "p_fornecedor": source.get("fornecedor") or None,
-                "p_codigo": source.get("codigo") or None,
-                "p_produto": source.get("produto") or None,
-            }
-        elif action == "save_nfs":
-            source = payload or {}
-            rpc_payload = {
-                "p_arquivo_nome": source.get("arquivo_nome") or "NF.xlsx",
-                "p_qtd_linhas_brutas": int(source.get("qtd_linhas_brutas", 0) or 0),
-                "p_rows": source.get("rows") or [],
-            }
-        elif action == "create_operator":
-            source = payload or {}
-            rpc_payload = {"p_nome": source.get("nome") or ""}
-        elif action == "delete_operator":
-            source = payload or {}
-            rpc_payload = {"p_id": int(source.get("id", 0) or 0)}
-        response = HTTP_SESSION.post(
-            rpc_url,
-            headers=headers,
-            json=rpc_payload,
-            timeout=timeout,
-        )
-        try:
-            data = response.json()
-        except Exception:
-            data = {"error": response.text}
-        if not response.ok:
-            raise RuntimeError(data.get("message") or data.get("error") or f"Erro HTTP {response.status_code}")
-        if action in CACHE_INVALIDATING_ACTIONS and "_clear_shared_read_cache" in globals():
-            _clear_shared_read_cache()
-        return {"data": data or []}
-
-    response = HTTP_SESSION.post(
-        SUPABASE_EDGE_URL,
-        headers=headers,
-        json={"action": action, "payload": payload or {}},
+    result = entrega_api.call(
+        _supabase_anon_key(),
+        action,
+        payload=payload,
         timeout=timeout,
     )
-    try:
-        data = response.json()
-    except Exception:
-        data = {"error": response.text}
-
-    if not response.ok:
-        raise RuntimeError(data.get("error") or f"Erro HTTP {response.status_code}")
-    if action in CACHE_INVALIDATING_ACTIONS and "_clear_shared_read_cache" in globals():
+    if action in CACHE_INVALIDATING_ACTIONS:
         _clear_shared_read_cache()
-    return data
+    return result
 
 
 @st.cache_data(ttl=20, show_spinner=False, max_entries=128)
@@ -445,7 +327,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 98
+APP_BUILD = 99
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
