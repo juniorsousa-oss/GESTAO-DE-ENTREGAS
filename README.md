@@ -1,59 +1,78 @@
-# Controle de Entregas à Produção — Protótipo
+# Gestão de Entregas | SETTA
 
-Primeiro esboço para validação de fluxo e regras.
+Aplicativo operacional em Streamlit para acompanhamento de cronograma, separação, materiais, notas fiscais e histórico de alterações.
 
-## Telas
-- Dashboard
-- Cronograma
-- Materiais
-- Histórico
+## Execução
 
-## Regras já implementadas
-- OP é a chave única do projeto.
-- Apenas OPs com Data de Separação aparecem no Cronograma.
-- A importação mantém internamente OPs sem data para detectar mudanças futuras.
-- Cronograma ordenado da data mais antiga para a mais recente.
-- Status operacionais: Pendente, Separado e Entregue.
-- Comentários por OP com histórico.
-- Histórico de alteração de Data de Separação.
-- Alerta crítico quando:
-  - OP estava sem data e recebe data <= hoje;
-  - OP futura é antecipada para data <= hoje;
-  - OP nova entra já com data <= hoje.
-- Alertas críticos exigem registro de tratativa PCP.
-- MRP Consulta:
-  - Data CM <= hoje e saldo > 0 => ENTREGA PENDENTE
-  - Data CM <= hoje e saldo <= 0 => SEM ESTOQUE
-  - Data CM > hoje => AGUARDANDO DATA
-  - Sem Data CM => SEM DATA CM
-- Bloqueio de importação se uma mesma OP possuir duas datas diferentes no mesmo arquivo.
-
-## Rodar localmente
 ```bash
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## Observação
-Nesta primeira versão os dados ficam em `st.session_state`, ou seja, servem para validar a lógica e o layout.
-Na próxima etapa, após aprovação, a persistência deve ser conectada ao Supabase.
+O ambiente validado atualmente utiliza Python 3.11 e as versões fixadas em `requirements.txt`.
 
+## Interface
 
-## Integração automática com Controle de NFs
+O aplicativo utiliza o Padrão SETTA extraído do Conversor MRP:
 
-O módulo **Materiais** alimenta automaticamente o aplicativo CONTROLE-DE-NFS.
+- moldura externa e rolagem interna;
+- menu superior com botão de abertura;
+- sidebar operacional;
+- header/logo a partir da configuração global `setta_global`;
+- comportamento responsivo para desktop e mobile.
 
-Fonte operacional:
-- menu **Materiais**;
-- filtro equivalente a **PENDÊNCIA SEM ESTOQUE**;
-- somente OPs classificadas pelo Dashboard como **Com pendências**;
-- campos enviados ao Controle de NFs: **Projeto**, **Produto** e **Data CM**.
+A estrutura interna de cada módulo continua específica do Gestão de Entregas.
 
-A sincronização é executada automaticamente no backend após:
-- nova carga oficial do Cronograma;
-- nova carga do MRP Consulta;
-- alterações de status que possam modificar a classificação operacional da OP.
+## Módulos
 
-A API utiliza a Edge Function `nf-materiais-api`. O endpoint de sincronização não aceita linhas arbitrárias: ele recompõe a carga diretamente das tabelas oficiais do Gestão de Entregas, reduzindo o risco de injeção de dados externos.
+- Dashboard
+- Cronograma
+- Materiais
+- NFs
+- Histórico
 
-O Excel filtrado continua disponível para conferência/contingência, mas deixa de ser necessário para alimentar o CONTROLE-DE-NFS.
+## Fontes operacionais
+
+A aplicação consulta a Central SETTA e trabalha com:
+
+- `for022` para o cronograma;
+- `relatorio_mrp` para materiais/MRP;
+- `nf` para notas fiscais.
+
+A sincronização compara tokens de versão antes de baixar ou reprocessar os dados. Quando a versão não mudou, a carga existente é reutilizada.
+
+## Persistência e integrações
+
+Os dados operacionais são persistidos no Supabase. O app utiliza RPCs/PostgREST para leituras e operações específicas e Edge Functions quando necessário.
+
+A integração de materiais com o Controle de NFs utiliza a infraestrutura de backend existente e mantém a classificação operacional do Gestão de Entregas como fonte de verdade.
+
+## Regras principais
+
+- OP é a chave operacional do projeto.
+- Cronograma considera a Data de Separação.
+- Alterações de cronograma são registradas no histórico.
+- Mudanças críticas de data exigem acompanhamento operacional.
+- Materiais utilizam a classificação final do Dashboard para determinar pendências.
+- NFs consideram somente as naturezas operacionais configuradas no aplicativo.
+- A carga histórica preserva a sequência cronológica e bloqueia duplicação de datas já registradas.
+
+## Estrutura atual
+
+Arquivos principais:
+
+- `streamlit_app.py`: aplicação e regras de interface/operação;
+- `central_entregas_data.py`: acesso à Central SETTA, downloads normalizados e configuração visual;
+- `.streamlit/config.toml`: tema e configuração do Streamlit;
+- `config/logo_setta.svg`: fallback local da marca;
+- `.github/workflows/central-integration-ci.yml`: validação automática do app.
+
+## Configuração
+
+O deploy precisa disponibilizar as credenciais do Supabase por Secrets/variáveis de ambiente, incluindo a chave utilizada pelas APIs do aplicativo.
+
+A identidade visual global é lida de `setta_app_visual_config` com `app_key = setta_global`.
+
+## Observação de segurança
+
+O aplicativo ainda não possui autenticação central de usuário. As ações operacionais utilizam um responsável técnico padrão até a implantação do banco único de usuários e da autenticação SETTA.
