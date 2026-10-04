@@ -22,6 +22,7 @@ central = read("central_entregas_data.py")
 requirements = read("requirements.txt")
 config = read(".streamlit/config.toml")
 migration = read("supabase/migrations/20261004_fase3_security.sql")
+sync_migration = read("supabase/migrations/20261004_mrp_sync_lock.sql")
 
 # 1) Estrutura principal.
 required_files = [
@@ -32,6 +33,7 @@ required_files = [
     "central_entregas_data.py",
     ".streamlit/config.toml",
     "supabase/migrations/20261004_fase3_security.sql",
+    "supabase/migrations/20261004_mrp_sync_lock.sql",
 ]
 for rel in required_files:
     if not (ROOT / rel).exists():
@@ -172,6 +174,19 @@ for token in [
 ]:
     if token not in migration.lower():
         fail(f"Migração de segurança incompleta: {token}")
+
+for token in [
+    "entrega_salvar_materiais_central_seguro",
+    "pg_advisory_xact_lock",
+    "version_already_applied",
+]:
+    if token not in sync_migration.lower():
+        fail(f"Proteção de sincronização MRP ausente: {token}")
+
+if '"save_materials_central"' not in app:
+    fail("Sincronização da Central ainda não usa a gravação MRP atômica.")
+if '"save_materials_central"' not in api:
+    fail("Contrato da API não registra save_materials_central.")
 
 # 10) Duplicações/regressões conhecidas.
 if app.count("def _fmt_feed_datetime(value):") != 1:
