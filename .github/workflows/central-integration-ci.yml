@@ -38,7 +38,8 @@ jobs:
           assert "bundle_state" in central
           assert "visual_get" in central
           assert "def _sync_central_operational_feeds(force=False):" in app
-          assert '_sync_central_operational_feeds(force=True)' in app
+          assert '_sync_central_operational_feeds(force=False)' in app
+          assert '_sync_central_operational_feeds(force=True)' not in app
           assert 'with st.spinner("VERIFICANDO E ATUALIZANDO CRONOGRAMA, MATERIAIS E NFS...")' not in app
           assert 'row.get("source_updated_at") or row.get("synced_at")' in app
           assert "ÚLTIMA ATUALIZAÇÃO" in app
