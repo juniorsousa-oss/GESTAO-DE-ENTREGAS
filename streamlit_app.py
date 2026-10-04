@@ -16,6 +16,7 @@ from PIL import Image
 import central_entregas_data as central_data
 import setta_shell
 import entrega_api
+import setta_auth
 
 try:
     _GLOBAL_VISUAL_CONFIG = central_data.load_visual_config()
@@ -75,14 +76,90 @@ CACHE_INVALIDATING_ACTIONS = {
 }
 
 
+def _auth_user():
+    user = st.session_state.get("_setta_auth_user")
+    return user if isinstance(user, dict) else None
+
+
 def _session_operator():
-    # Temporário até a implantação do banco único de usuários.
+    user = _auth_user()
+    if user:
+        return str(
+            user.get("full_name")
+            or user.get("username")
+            or DEFAULT_AUDIT_RESPONSIBLE
+        ).strip() or DEFAULT_AUDIT_RESPONSIBLE
     return DEFAULT_AUDIT_RESPONSIBLE
 
 
 def _session_operator_input(label, key):
-    # Não renderiza campo. Mantido para compatibilidade com fluxos antigos.
-    return DEFAULT_AUDIT_RESPONSIBLE
+    # Compatibilidade com fluxos antigos: usa sempre o usuário autenticado da sessão.
+    return _session_operator()
+
+
+@st.cache_data(ttl=60, show_spinner=False, max_entries=2)
+def _setta_auth_bootstrap_cached(anon_key):
+    return setta_auth.bootstrap(anon_key)
+
+
+def _setta_login_required():
+    key = _supabase_anon_key()
+    if not key:
+        return False
+    try:
+        payload = _setta_auth_bootstrap_cached(key)
+        settings = payload.get("settings") if isinstance(payload, dict) else {}
+        required = bool((settings or {}).get("login_required", False))
+        st.session_state["_setta_auth_required"] = required
+        return required
+    except Exception as exc:
+        st.session_state["_setta_auth_policy_error"] = str(exc)
+        return bool(st.session_state.get("_setta_auth_required", False))
+
+
+def _render_setta_auth_gate():
+    if not _setta_login_required():
+        return True
+
+    if _auth_user():
+        return True
+
+    st.markdown(
+        '<div class="section-band">'
+        '<div class="section-band-kicker">ACESSO SETTA</div>'
+        '<div class="section-band-title">AUTENTICAÇÃO NECESSÁRIA</div>'
+        '<div class="section-band-note">UTILIZE O MESMO USUÁRIO E SENHA DO OPERAHUB.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("setta_auth_login_form", clear_on_submit=False):
+        login = st.text_input("USUÁRIO OU E-MAIL", key="_setta_auth_login")
+        password = st.text_input("SENHA", type="password", key="_setta_auth_password")
+        submitted = st.form_submit_button(
+            "ENTRAR",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submitted:
+        try:
+            user = setta_auth.authenticate(
+                _supabase_anon_key(),
+                login,
+                password,
+            )
+        except Exception as exc:
+            st.error(f"Não foi possível validar o acesso: {exc}")
+        else:
+            if user:
+                st.session_state["_setta_auth_user"] = user
+                st.session_state.pop("_setta_auth_password", None)
+                st.rerun()
+            else:
+                st.error("Usuário ou senha inválidos.")
+
+    st.stop()
 
 
 def _supabase_anon_key():
@@ -112,8 +189,8 @@ def _supabase_api(action, payload=None, timeout=45):
     if action in AUDIT_RESPONSIBLE_ACTIONS:
         payload = dict(payload or {})
         payload["responsavel"] = str(
-            payload.get("responsavel") or DEFAULT_AUDIT_RESPONSIBLE
-        ).strip() or DEFAULT_AUDIT_RESPONSIBLE
+            payload.get("responsavel") or _session_operator()
+        ).strip() or _session_operator()
 
     result = entrega_api.call(
         _supabase_anon_key(),
@@ -355,7 +432,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 101
+APP_BUILD = 102
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1842,6 +1919,25 @@ with st.sidebar:
             on_click=_set_entrega_navigation,
             args=(_label,),
         )
+    _sidebar_user = _auth_user()
+    if _sidebar_user:
+        _sidebar_user_name = escape(
+            str(_sidebar_user.get("full_name") or _sidebar_user.get("username") or "USUÁRIO")
+        )
+        _sidebar_user_role = escape(str(_sidebar_user.get("role") or ""))
+        st.markdown(
+            '<div class="sidebar-divider"></div>'
+            '<div class="sidebar-section-label">SESSÃO</div>'
+            '<div class="sidebar-status-card">'
+            f'<div class="sidebar-status-name">{_sidebar_user_name}</div>'
+            f'<div class="sidebar-status-meta">{_sidebar_user_role}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("SAIR", key="setta_auth_logout", use_container_width=True):
+            st.session_state.pop("_setta_auth_user", None)
+            st.rerun()
+
     st.markdown(
         '<div class="sidebar-divider"></div>'
         '<div class="sidebar-section-label">STATUS GERAL</div>',
@@ -1876,8 +1972,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Operações de rede são executadas somente depois que o shell SETTA foi emitido.
-# O usuário recebe moldura, navegação e cabeçalho antes das sincronizações.
+# A política de autenticação é centralizada no OperaHub. Enquanto
+# login_required=false, o comportamento permanece igual ao atual.
+_render_setta_auth_gate()
+
+# Operações de rede são executadas somente depois que o shell SETTA foi emitido
+# e, quando exigido, depois da autenticação do usuário.
 _sync_bootstrap_from_supabase()
 _sync_central_operational_feeds(force=False)
 
