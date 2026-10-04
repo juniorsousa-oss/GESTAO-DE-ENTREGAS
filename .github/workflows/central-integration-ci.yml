@@ -22,7 +22,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: Compilar integração
         run: |
-          python -m py_compile streamlit_app.py central_entregas_data.py setta_shell.py
+          python -m py_compile streamlit_app.py central_entregas_data.py setta_shell.py entrega_api.py
       - name: Validar pontos da Central
         run: |
           python - <<'PY'
@@ -48,7 +48,9 @@ jobs:
           assert "max-width:1680px!important" in app
           assert "width:260px!important" in app
           assert '"ui_config": row.get("ui_config") or {}' in central
-          assert "HTTP_SESSION = requests.Session()" in app
+          api = Path("entrega_api.py").read_text(encoding="utf-8")
+          assert "entrega_api.call(" in app
+          assert "HTTP_SESSION = requests.Session()" in api
           assert "requests.post(" not in app
           assert "setta_shell.render_shell(" in app
           assert "SETTA UI — App Shell Rounded V1" not in app
@@ -57,6 +59,17 @@ jobs:
           assert "DeltaGenerator.dataframe" not in app
           assert app.count("def _fmt_feed_datetime(value):") == 1
           assert app.count("def _fmt_feed_date(value):") == 1
+          for dead_name in (
+              "_load_operator_options",
+              "_sync_materials_from_supabase",
+              "import_schedule",
+              "change_status",
+              "add_comment",
+              "close_treatment",
+              "find_col",
+              "_logo_admin_password_valid",
+          ):
+              assert f"def {dead_name}(" not in app, dead_name
           assert "_entrega_nav_query_consumed" in app
           assert not Path("sitecustomize.py").exists()
           for legacy in (
