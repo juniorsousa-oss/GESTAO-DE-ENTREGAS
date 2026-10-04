@@ -48,5 +48,21 @@ jobs:
           assert "max-width:1680px!important" in app
           assert "width:260px!important" in app
           assert '"ui_config": row.get("ui_config") or {}' in central
+          assert "HTTP_SESSION = requests.Session()" in app
+          assert "requests.post(" not in app
+          assert app.count("def _fmt_feed_datetime(value):") == 1
+          assert app.count("def _fmt_feed_date(value):") == 1
+          assert "_entrega_nav_query_consumed" in app
+          assert not Path("sitecustomize.py").exists()
+          for legacy in (
+              "app_main.py",
+              "streamlit_runtime_v8.py",
+              "streamlit_ui_legacy.py",
+              "scripts/priority_build54.py",
+              "scripts/build66_runtime_fix.py",
+              "scripts/build67_material_pending_schedule.py",
+              "scripts/build68_material_pending_from_dashboard.py",
+          ):
+              assert not Path(legacy).exists(), legacy
           print("CENTRAL_ENTREGAS_COMPILE_OK")
           PY
