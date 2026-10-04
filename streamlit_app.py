@@ -1859,25 +1859,6 @@ NF_ALLOWED_NATURES = {
     "INDUSTRIALIZACAO POR ENCOMENDA",
 }
 
-st.markdown(
-    """
-    <style>
-      .block-container {padding-top: 1.25rem; padding-bottom: 2rem;}
-      [data-testid="stSidebar"] {width:260px!important;min-width:260px!important;max-width:260px!important;}
-      .app-title {font-size:1.65rem;font-weight:800;margin-bottom:.1rem;}
-      .app-sub {font-size:.92rem;color:#6b7280;margin-bottom:1rem;}
-      .critical {border:1px solid #ef4444;border-left:6px solid #ef4444;
-        border-radius:8px;padding:12px 14px;background:rgba(239,68,68,.06);margin:8px 0 14px;}
-      .project-card {border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;
-        margin-top:12px;background:rgba(249,250,251,.72);}
-      .project-title {font-size:1.08rem;font-weight:750;margin-bottom:.25rem;}
-      .project-meta {color:#6b7280;font-size:.88rem;margin-bottom:.6rem;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 def now():
     return datetime.now(TZ)
 
@@ -3157,8 +3138,7 @@ def _style_operational_rows(df):
 
 if not st.session_state.get("_entrega_startup_central_checked"):
     st.session_state["_entrega_startup_central_checked"] = True
-    with st.spinner("VERIFICANDO E ATUALIZANDO CRONOGRAMA, MATERIAIS E NFS..."):
-        _sync_central_operational_feeds(force=True)
+    _sync_central_operational_feeds(force=True)
 else:
     _sync_central_operational_feeds(force=False)
 
@@ -3547,6 +3527,10 @@ section[data-testid="stSidebar"][aria-expanded="false"]>div{{width:0!important;m
 .app-sub{{margin-top:.72rem!important;margin-bottom:1.65rem!important;color:#4f5661!important;font-size:.94rem!important;line-height:1.35!important;text-transform:uppercase!important}}
 
 /* Conteúdo interno do Gestão de Entregas — preservado */
+.critical{{border:1px solid #ef4444!important;border-left:6px solid #ef4444!important;border-radius:8px!important;padding:12px 14px!important;background:rgba(239,68,68,.06)!important;margin:8px 0 14px!important}}
+.project-card{{border:1px solid #d1d5db!important;border-radius:10px!important;padding:14px 16px!important;margin-top:12px!important;background:rgba(249,250,251,.72)!important}}
+.project-title{{font-size:1.08rem!important;font-weight:750!important;margin-bottom:.25rem!important}}
+.project-meta{{color:#6b7280!important;font-size:.88rem!important;margin-bottom:.6rem!important}}
 .section-band{{margin:0 0 .95rem!important;padding:.82rem 1rem!important;background:#fff!important;border:1px solid #e5e8ee!important;border-left:5px solid #111827!important;border-radius:12px!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}}
 .section-band-kicker{{font-size:.66rem!important;font-weight:900!important;letter-spacing:.085em!important;text-transform:uppercase!important;color:#ef4444!important;margin-bottom:.18rem!important}}
 .section-band-title{{font-size:1.08rem!important;font-weight:900!important;color:#111827!important;letter-spacing:-.015em!important;line-height:1.2!important;text-transform:uppercase!important}}
