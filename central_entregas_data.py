@@ -254,6 +254,7 @@ def load_visual_config() -> dict:
         "logo_mime": row.get("logo_mime") or "image/png",
         "favicon_data": row.get("favicon_data") or "",
         "favicon_mime": row.get("favicon_mime") or "image/png",
+        "ui_config": row.get("ui_config") or {},
     }
 
 
