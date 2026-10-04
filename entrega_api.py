@@ -16,34 +16,21 @@ DIRECT_RPC = {
     "bootstrap": "entrega_bootstrap_v2",
     "list_current": "entrega_listar_cronograma_v2",
     "list_imports": "entrega_listar_importacoes",
-    "load_materials": "entrega_listar_mrp_atual",
     "load_material_view": "entrega_materiais_consulta",
     "load_material_summary": "entrega_listar_mrp_resumo",
     "load_material_ops": "entrega_listar_mrp_operacoes",
     "list_daily_alerts": "entrega_listar_alertas_diarios_v2",
-    "save_logo": "entrega_salvar_logo",
-    "save_button_color": "entrega_salvar_cor_botoes",
     "load_nf_summary": "entrega_nf_resumo",
     "load_nf_filters": "entrega_nf_filtros",
     "load_nfs": "entrega_listar_nf_filtrada",
     "save_nfs": "entrega_salvar_nf_atual",
     "export_nfs": "entrega_exportar_nf_atual_v2",
     "load_feed_status": "entrega_cargas_resumo",
-    "list_operators": "entrega_listar_operadores",
-    "create_operator": "entrega_criar_operador",
-    "delete_operator": "entrega_excluir_operador",
 }
 
 
 def _rpc_payload(action, payload):
     source = payload or {}
-    if action == "save_logo":
-        return {
-            "p_logo_data": source.get("logo_data"),
-            "p_logo_mime": source.get("logo_mime"),
-        }
-    if action == "save_button_color":
-        return {"p_button_color": source.get("button_color") or "#111111"}
     if action == "load_material_view":
         return {
             "p_ops_pendencia": source.get("ops_pendencia") or [],
@@ -78,10 +65,6 @@ def _rpc_payload(action, payload):
             "p_qtd_linhas_brutas": int(source.get("qtd_linhas_brutas", 0) or 0),
             "p_rows": source.get("rows") or [],
         }
-    if action == "create_operator":
-        return {"p_nome": source.get("nome") or ""}
-    if action == "delete_operator":
-        return {"p_id": int(source.get("id", 0) or 0)}
     return {}
 
 
