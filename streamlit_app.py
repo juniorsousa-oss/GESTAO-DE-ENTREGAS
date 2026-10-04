@@ -444,7 +444,7 @@ _DASHBOARD_METRIC_FILTERS = {
 
 
 def _metric_card(container, label, value, delta=None, **_kwargs):
-    """Renderiza um KPI explícito sem alterar DeltaGenerator.metric globalmente."""
+    """Renderiza um KPI explícito sem alterar métodos globais do Streamlit."""
     label_text = str(label)
     value_text = str(value)
     accent, soft = _METRIC_PALETTE.get(label_text, ("#2563eb", "rgba(37,99,235,.12)"))
