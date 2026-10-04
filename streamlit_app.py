@@ -438,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 103
+APP_BUILD = 104
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1944,12 +1944,17 @@ with st.sidebar:
             st.session_state.pop("_setta_auth_user", None)
             st.rerun()
 
-    st.markdown(
+    _sidebar_status_slot = st.empty()
+    _sidebar_status_slot.markdown(
         '<div class="sidebar-divider"></div>'
-        '<div class="sidebar-section-label">STATUS GERAL</div>',
+        '<div class="sidebar-section-label">STATUS GERAL</div>'
+        '<div class="sidebar-status-card">'
+        '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
+        '<div class="sidebar-status-value status-warning">ATUALIZANDO</div>'
+        '<div class="sidebar-status-meta">SINCRONIZANDO BASES...</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
-    _sidebar_status_slot = st.empty()
 
 
 # SETTA UI — Top Controls V1
@@ -1994,6 +1999,8 @@ _sidebar_status_class = {
     "ERRO": "status-error",
 }.get(_sidebar_status, "status-warning")
 _sidebar_status_slot.markdown(
+    '<div class="sidebar-divider"></div>'
+    '<div class="sidebar-section-label">STATUS GERAL</div>'
     '<div class="sidebar-status-card">'
     '<div class="sidebar-status-name">GESTÃO DE ENTREGAS</div>'
     f'<div class="sidebar-status-value {_sidebar_status_class}">{_sidebar_status}</div>'
