@@ -3,7 +3,6 @@ from html import escape
 from datetime import date
 import os
 import re
-import hmac
 import json
 
 import pandas as pd
@@ -45,11 +44,6 @@ CACHE_INVALIDATING_ACTIONS = {
 def _session_operator():
     # Temporário até a implantação do banco único de usuários.
     return DEFAULT_AUDIT_RESPONSIBLE
-
-
-def _load_operator_options(force=False):
-    # Compatibilidade temporária. O cadastro local de operadores não é mais usado.
-    return []
 
 
 def _session_operator_input(label, key):
@@ -327,7 +321,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 99
+APP_BUILD = 100
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -372,49 +366,6 @@ def _sync_material_summary_from_supabase(force=False):
             )
         return False
 
-
-
-def _sync_materials_from_supabase(force=False):
-    if not _supabase_anon_key():
-        return False
-    if st.session_state.get("_entrega_mrp_sync") and not force:
-        return True
-
-    try:
-        result = _cached_supabase_read("load_materials", timeout=45, force=force)
-        payload = result.get("data") or {}
-        rows = payload.get("dados") or [] if isinstance(payload, dict) else []
-        if rows:
-            materials_df = pd.DataFrame(rows)
-            legacy_situation_col = "Situação " + "Entrega"
-            if "Situação Separação" not in materials_df.columns and legacy_situation_col in materials_df.columns:
-                materials_df = materials_df.rename(columns={legacy_situation_col: "Situação Separação"})
-            if "Situação Separação" in materials_df.columns:
-                materials_df["Situação Separação"] = materials_df["Situação Separação"].map(_normalize_delivery_state)
-            materials_df = _recalcular_condicao_pendencia_materiais(materials_df)
-            material_order = [
-                "Projeto", "Produto", "Descrição", "Última Solicitação", "Data CM",
-                "Semana de Necessidade", "Semana de Atendimento", "Necessidade", "Estoque",
-                "Pré Nota", "P.C.", "Fabricação", "S.C.", "Ação",
-                "Contexto Projeto", "Contexto Parte 1", "Contexto Parte 2",
-                "Status Projeto", "Situação Separação", "Condição de pendência",
-            ]
-            ordered_cols = [c for c in material_order if c in materials_df.columns]
-            extra_cols = [c for c in materials_df.columns if c not in ordered_cols]
-            st.session_state["materials"] = materials_df[ordered_cols + extra_cols]
-        elif "materials" not in st.session_state:
-            st.session_state["materials"] = pd.DataFrame()
-        if isinstance(payload, dict):
-            st.session_state["_entrega_mrp_meta"] = {
-                "arquivo_nome": payload.get("arquivo_nome"),
-                "qtd_linhas": payload.get("qtd_linhas", 0),
-                "atualizado_em": payload.get("atualizado_em"),
-            }
-        st.session_state["_entrega_mrp_sync"] = True
-        return True
-    except Exception as exc:
-        st.session_state["_entrega_mrp_sync_error"] = str(exc)
-        return False
 
 
 def _set_dashboard_filter(value):
@@ -966,203 +917,6 @@ def classify_change(old_date, new_date, existed):
         return "POSTERGAÇÃO DE CRONOGRAMA", False, "Data de Separação postergada."
 
     return "SEM ALTERAÇÃO", False, ""
-
-def import_schedule(base, metadata, source_name):
-    previous = st.session_state.snapshot.copy()
-    states = st.session_state.ops_state.copy()
-    baseline = not st.session_state.baseline_loaded
-
-    new_snapshot = {}
-    master_rows = []
-    critical = []
-    changes = []
-
-    for _, row in base.iterrows():
-        op = str(row["op"])
-        new_date = row["data_separacao"]
-        if pd.isna(new_date):
-            new_date = None
-
-        new_snapshot[op] = {
-            "op": op,
-            "psy": row["psy"],
-            "cliente": row["cliente"],
-            "produto": row["produto"],
-            "data_separacao": new_date,
-        }
-
-        state = states.get(op, default_state())
-        prev = previous.get(op)
-        existed = prev is not None
-        old_date = prev.get("data_separacao") if prev else None
-
-        if not baseline and ((not existed) or old_date != new_date):
-            kind, is_critical, detail = classify_change(old_date, new_date, existed)
-            add_history(
-                op,
-                "Alteração de cronograma" if existed else "OP incluída na atualização",
-                "Data de Separação",
-                fmt_date(old_date) if existed else "Não existia",
-                fmt_date(new_date),
-                detail=detail,
-            )
-            changes.append(
-                {
-                    "OP": op,
-                    "Data anterior": fmt_date(old_date) if existed else "Não existia",
-                    "Nova data": fmt_date(new_date),
-                    "Alteração": kind,
-                    "Crítico": "SIM" if is_critical else "NÃO",
-                }
-            )
-            if is_critical:
-                state["alerta_ativo"] = True
-                state["tipo_alerta"] = kind
-                state["tratativa_pcp"] = "Pendente"
-                critical.append(
-                    {
-                        "OP": op,
-                        "Cliente": row["cliente"],
-                        "Produto": row["produto"],
-                        "Data anterior": fmt_date(old_date) if existed else "Não existia",
-                        "Nova data": fmt_date(new_date),
-                        "Ocorrência": kind,
-                    }
-                )
-                add_history(op, "ALERTA CRÍTICO DE CRONOGRAMA", "Tratativa PCP", "", "Pendente", detail=detail)
-
-        states[op] = state
-
-        if new_date is not None:
-            master_rows.append(
-                {
-                    "op": op,
-                    "psy": row["psy"],
-                    "cliente": row["cliente"],
-                    "produto": row["produto"],
-                    "data_separacao": new_date,
-                    "status": state.get("status", "Pendente"),
-                    "alerta_ativo": bool(state.get("alerta_ativo", False)),
-                    "tipo_alerta": state.get("tipo_alerta", ""),
-                    "tratativa_pcp": state.get("tratativa_pcp", ""),
-                    "ultimo_comentario": state.get("ultimo_comentario", ""),
-                    "ultima_atualizacao": now().strftime("%d/%m/%Y %H:%M"),
-                }
-            )
-
-    if not baseline:
-        for op in sorted(set(previous) - set(new_snapshot)):
-            old_date = previous[op].get("data_separacao")
-            add_history(op, "OP removida da base", "Data de Separação", fmt_date(old_date), "Fora da base")
-            changes.append(
-                {
-                    "OP": op,
-                    "Data anterior": fmt_date(old_date),
-                    "Nova data": "Fora da base",
-                    "Alteração": "REMOVIDA DA BASE",
-                    "Crítico": "NÃO",
-                }
-            )
-
-    master = pd.DataFrame(master_rows, columns=MASTER_COLS)
-    if not master.empty:
-        master = master.sort_values(["data_separacao", "op"], ascending=[True, True]).reset_index(drop=True)
-
-    st.session_state.schedule = master
-    st.session_state.snapshot = new_snapshot
-    st.session_state.ops_state = states
-    st.session_state.baseline_loaded = True
-    st.session_state.imports.append(
-        {
-            "data_hora": now().strftime("%d/%m/%Y %H:%M:%S"),
-            "arquivo": source_name,
-            "modo": "Carga inicial" if baseline else "Atualização",
-            **metadata,
-            "alertas_criticos": len(critical),
-        }
-    )
-    return baseline, critical, changes
-
-
-def change_status(op, new_status, user="Operador"):
-    op = str(op)
-    master = st.session_state.schedule.copy()
-    idxs = master.index[master["op"].astype(str) == op].tolist()
-    if not idxs:
-        return False, "OP não encontrada."
-
-    idx = idxs[0]
-    old_status = master.at[idx, "status"]
-    if new_status == old_status:
-        return False, "O projeto já está com esse status."
-
-    master.at[idx, "status"] = new_status
-    master.at[idx, "ultima_atualizacao"] = now().strftime("%d/%m/%Y %H:%M")
-    st.session_state.schedule = master
-
-    state = st.session_state.ops_state.get(op, default_state())
-    state["status"] = new_status
-    st.session_state.ops_state[op] = state
-
-    add_history(op, "Alteração de status", "Status", old_status, new_status, user=user or "Operador")
-    return True, f"Status alterado de {old_status} para {new_status}."
-
-
-def add_comment(op, comment, user):
-    comment = comment.strip()
-    if not comment:
-        return False
-    st.session_state.comments.append(
-        {
-            "data_hora": now().strftime("%d/%m/%Y %H:%M:%S"),
-            "op": str(op),
-            "responsavel": user or "Operador",
-            "comentario": comment,
-        }
-    )
-    state = st.session_state.ops_state.get(str(op), default_state())
-    state["ultimo_comentario"] = comment
-    st.session_state.ops_state[str(op)] = state
-    master = st.session_state.schedule.copy()
-    idxs = master.index[master["op"].astype(str) == str(op)].tolist()
-    if idxs:
-        idx = idxs[0]
-        master.at[idx, "ultimo_comentario"] = comment
-        master.at[idx, "ultima_atualizacao"] = now().strftime("%d/%m/%Y %H:%M")
-        st.session_state.schedule = master
-    add_history(op, "Comentário registrado", "Comentário", "", comment, user=user or "Operador")
-    return True
-
-
-def close_treatment(op, detail, user):
-    state = st.session_state.ops_state.get(str(op), default_state())
-    state["alerta_ativo"] = False
-    state["tratativa_pcp"] = "Concluída"
-    st.session_state.ops_state[str(op)] = state
-
-    master = st.session_state.schedule.copy()
-    idxs = master.index[master["op"].astype(str) == str(op)].tolist()
-    if idxs:
-        idx = idxs[0]
-        master.at[idx, "alerta_ativo"] = False
-        master.at[idx, "tratativa_pcp"] = "Concluída"
-        st.session_state.schedule = master
-
-    add_history(op, "Tratativa PCP concluída", "Tratativa PCP", "Pendente", "Concluída", user=user or "Operador", detail=detail)
-
-
-def find_col(df, names):
-    cols = list(df.columns)
-    norm = {str(c).strip().lower(): c for c in cols}
-    for name in names:
-        if name.lower() in norm:
-            return norm[name.lower()]
-    for c in cols:
-        low = str(c).lower()
-        if any(name.lower() in low for name in names):
-            return c
-    return cols[0] if cols else None
-
 
 def _normalize_project_status(value):
     value = str(value or "").strip().upper()
@@ -2002,18 +1756,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-def _logo_admin_password_valid(candidate):
-    candidate = str(candidate or "")
-    configured = ""
-    try:
-        configured = str(st.secrets.get("LOGO_ADMIN_PASSWORD") or "").strip()
-    except Exception:
-        configured = ""
-    configured = configured or str(os.getenv("LOGO_ADMIN_PASSWORD") or "").strip()
-    if not configured:
-        return False
-    return hmac.compare_digest(candidate, configured)
 
 if st.session_state.pop("_clear_logo_admin_password", False):
     st.session_state.pop("_logo_admin_password_input", None)
