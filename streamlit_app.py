@@ -438,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 104
+APP_BUILD = 105
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1347,10 +1347,12 @@ def _sync_central_operational_feeds(force=False):
                     base.to_json(orient="records", date_format="iso", force_ascii=False)
                 )
                 result = _supabase_api(
-                    "save_materials",
+                    "save_materials_central",
                     {
                         "arquivo_nome": "RELATORIO_MRP_CENTRAL",
                         "rows": rows_payload,
+                        "version_token": token,
+                        "source_updated_at": meta.get("last_update_at") or meta.get("processed_at"),
                     },
                     timeout=120,
                 )
