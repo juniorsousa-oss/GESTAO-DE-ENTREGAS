@@ -10,7 +10,6 @@ import pandas as pd
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit.delta_generator import DeltaGenerator
 from PIL import Image
 
 import central_entregas_data as central_data
@@ -445,7 +444,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 95
+APP_BUILD = 96
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -537,1181 +536,114 @@ def _sync_materials_from_supabase(force=False):
         return False
 
 
-def _setta_native_callable(current, wrapper_name, prior_name):
-    """Recover the native Streamlit method, even after previous hot reloads.
-
-    Streamlit reruns this module on every interaction, but its imported module
-    and DeltaGenerator class persist. Re-wrapping the prior patched function
-    creates a growing call chain on every click.
-    """
-    seen = set()
-    while callable(current) and getattr(current, "__name__", "") == wrapper_name:
-        if id(current) in seen:
-            raise RuntimeError(f"Streamlit override cycle detected: {wrapper_name}")
-        seen.add(id(current))
-        previous = getattr(current, "__globals__", {}).get(prior_name)
-        if not callable(previous) or previous is current:
-            raise RuntimeError(f"Native Streamlit method not found: {wrapper_name}")
-        current = previous
-    return current
-
-
-_original_markdown = _setta_native_callable(st.markdown, "_markdown_ui", "_original_markdown")
-
-
-
-def _markdown_ui(body, *args, **kwargs):
-    if isinstance(body, str) and "<style>" in body:
-        body = body.replace(
-            '[data-testid="stSidebar"] {width:260px!important;min-width:260px!important;max-width:260px!important;}',
-            ''
-        )
-        body = body.replace(
-            '.block-container {padding-top: 1.25rem; padding-bottom: 2rem;}',
-            '''.block-container {
-                max-width: 1780px !important;
-                padding-top: 3.2rem !important;
-                padding-left: 2.7rem !important;
-                padding-right: 2.7rem !important;
-                padding-bottom: 3rem !important;
-                width: 100% !important;
-            }'''
-        )
-
-        extra_css = '''
-          [data-testid="stAppViewContainer"] {
-              background: #f4f7fb !important;
-          }
-
-          [data-testid="stHeader"] {
-              background: rgba(255, 255, 255, 0.96) !important;
-          }
-
-          section[data-testid="stSidebar"] {
-              background: #ffffff !important;
-              border-right: 1px solid #e8ebf0 !important;
-          }
-
-          section[data-testid="stSidebar"] .block-container {
-              padding-top: 1.6rem !important;
-              padding-left: 1rem !important;
-              padding-right: 1rem !important;
-          }
-
-          section[data-testid="stSidebar"] h2,
-          section[data-testid="stSidebar"] h3 {
-              color: #111111 !important;
-          }
-
-          .sidebar-brand {
-              background: #f8fafc;
-              border: 1px solid #e5e8ee;
-              border-radius: 12px;
-              padding: .9rem 1rem;
-              margin: 0 0 1.05rem 0;
-          }
-
-          .sidebar-brand-title {
-              font-size: .92rem;
-              font-weight: 800;
-              color: #111827;
-              letter-spacing: -.01em;
-          }
-
-          .sidebar-brand-sub {
-              margin-top: .18rem;
-              font-size: .75rem;
-              color: #6b7280;
-          }
-
-          .sidebar-section-label {
-              margin: .25rem 0 .45rem 0;
-              color: #374151;
-              font-size: .76rem;
-              font-weight: 800;
-              text-transform: uppercase;
-              letter-spacing: .055em;
-          }
-
-          .sidebar-logo-preview {
-              width: 100%;
-              min-height: 82px;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              margin: .65rem 0 .5rem 0;
-              padding: .65rem .8rem;
-              background: #ffffff;
-              border: 1px dashed #d1d5db;
-              border-radius: 10px;
-              box-sizing: border-box;
-              overflow: hidden;
-          }
-
-          .sidebar-logo-preview img {
-              display: block;
-              width: auto;
-              height: auto;
-              max-width: 140px;
-              max-height: 62px;
-              object-fit: contain;
-          }
-
-          .sidebar-info-card {
-              background: #f8fafc;
-              border: 1px solid #e5e8ee;
-              border-radius: 10px;
-              padding: .75rem .85rem;
-              color: #6b7280;
-              font-size: .76rem;
-              line-height: 1.55;
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] {
-              display: flex;
-              flex-direction: column;
-              gap: .34rem;
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
-          section[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] + div {
-              position: absolute !important;
-              opacity: 0 !important;
-              pointer-events: none !important;
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label {
-              position: relative;
-              width: 100%;
-              min-height: 42px;
-              display: flex !important;
-              align-items: center !important;
-              padding: .56rem .72rem .56rem .88rem !important;
-              margin: 0 !important;
-              border: 1px solid transparent;
-              border-radius: 10px;
-              background: transparent;
-              cursor: pointer;
-              transition: background .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease;
-              box-sizing: border-box;
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-              position: absolute !important;
-              opacity: 0 !important;
-              width: 0 !important;
-              height: 0 !important;
-              overflow: hidden !important;
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label p {
-              margin: 0 !important;
-              font-size: .83rem !important;
-              font-weight: 600 !important;
-              color: #374151 !important;
-              line-height: 1.2 !important;
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-              background: #f8fafc;
-              border-color: #e5e7eb;
-              transform: translateX(1px);
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-              background: #111827 !important;
-              border-color: #111827 !important;
-              box-shadow: 0 5px 14px rgba(17, 24, 39, .14);
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)::before {
-              content: "";
-              position: absolute;
-              left: .42rem;
-              top: 50%;
-              width: 4px;
-              height: 20px;
-              border-radius: 999px;
-              background: #ef4444;
-              transform: translateY(-50%);
-          }
-
-          section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
-              color: #ffffff !important;
-              font-weight: 700 !important;
-          }
-
-          .sidebar-lock-card {
-              margin: .2rem 0 .7rem 0;
-              padding: .78rem .82rem;
-              border: 1px solid #e5e7eb;
-              border-radius: 10px;
-              background: #f8fafc;
-              color: #4b5563;
-              font-size: .76rem;
-              line-height: 1.45;
-          }
-
-          .sidebar-lock-card strong {
-              display: block;
-              margin-bottom: .18rem;
-              color: #111827;
-              font-size: .79rem;
-          }
-
-          .sidebar-unlocked {
-              display: flex;
-              align-items: center;
-              gap: .45rem;
-              margin: .2rem 0 .7rem 0;
-              padding: .62rem .72rem;
-              border: 1px solid #bbf7d0;
-              border-radius: 10px;
-              background: #f0fdf4;
-              color: #166534;
-              font-size: .75rem;
-              font-weight: 700;
-          }
-
-          .sidebar-unlocked::before {
-              content: "";
-              width: 8px;
-              height: 8px;
-              border-radius: 999px;
-              background: #22c55e;
-              box-shadow: 0 0 0 3px rgba(34, 197, 94, .13);
-          }
-
-          .sidebar-current-label {
-              margin-top: .5rem;
-              color: #6b7280;
-              font-size: .72rem;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: .04em;
-          }
-
-          section[data-testid="stSidebar"] [data-testid="stFileUploader"] {
-              margin-top: .25rem;
-          }
-
-          section[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
-              border: 1px dashed #cbd5e1 !important;
-              border-radius: 10px !important;
-              background: #fbfdff !important;
-              padding: .6rem !important;
-          }
-
-          section[data-testid="stSidebar"] [data-testid="stTextInput"] input {
-              border-radius: 9px !important;
-          }
-
-          section[data-testid="stSidebar"] button[kind="primary"] {
-              border-radius: 9px !important;
-          }
-
-          [data-testid="stAppViewContainer"] > .main,
-          [data-testid="stAppViewContainer"] .main,
-          [data-testid="stMain"],
-          .stMain {
-              width: 100% !important;
-              max-width: 100% !important;
-              margin-left: 0 !important;
-              margin-right: 0 !important;
-          }
-
-          [data-testid="stAppViewContainer"] .main .block-container,
-          [data-testid="stMain"] .block-container,
-          .stMain .block-container {
-              width: 100% !important;
-              max-width: 100% !important;
-              margin-left: 0 !important;
-              margin-right: 0 !important;
-          }
-
-          section[data-testid="stSidebar"][aria-expanded="false"] {
-              width: 0 !important;
-              min-width: 0 !important;
-              max-width: 0 !important;
-              flex-basis: 0 !important;
-          }
-
-          .setta-logo-card {
-              width: 100%;
-              min-height: 128px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: #ffffff;
-              border: 1px solid #e5e8ee;
-              border-radius: 16px;
-              box-shadow: 0 4px 14px rgba(24, 39, 75, 0.08);
-              box-sizing: border-box;
-              margin: 0 0 2.55rem 0;
-              padding: 1.1rem 2rem;
-          }
-
-          .setta-logo-card img {
-              display: block;
-              width: auto;
-              height: auto;
-              max-width: 205px;
-              max-height: 86px;
-              object-fit: contain;
-          }
-
-          .app-title {
-              margin: 0 !important;
-              padding: 0 !important;
-              font-size: 2.55rem !important;
-              line-height: 1.08 !important;
-              font-weight: 800 !important;
-              letter-spacing: -0.04em !important;
-              color: #050505 !important;
-          }
-
-          .app-sub {
-              margin-top: .72rem !important;
-              margin-bottom: 1.65rem !important;
-              color: #4f5661 !important;
-              font-size: .94rem !important;
-              line-height: 1.35 !important;
-          }
-
-          @media (max-width: 900px) {
-              .block-container {
-                  padding-top: 2rem !important;
-                  padding-left: 1rem !important;
-                  padding-right: 1rem !important;
-              }
-              .setta-logo-card {
-                  min-height: 105px;
-                  margin-bottom: 1.8rem;
-              }
-              .setta-logo-card img {
-                  max-width: 170px;
-                  max-height: 72px;
-              }
-              .app-title {
-                  font-size: 2rem !important;
-              }
-          }
-
-          .kpi-card {
-              position: relative;
-              min-height: 116px;
-              padding: 16px 18px 15px 18px;
-              border: 1px solid #e2e8f0;
-              border-radius: 14px;
-              background: #ffffff;
-              box-shadow: 0 4px 16px rgba(15, 23, 42, .055);
-              overflow: hidden;
-              transition: transform .12s ease, box-shadow .12s ease;
-          }
-
-          .kpi-card:hover {
-              transform: translateY(-1px);
-              box-shadow: 0 8px 22px rgba(15, 23, 42, .085);
-          }
-
-
-          div[class*="st-key-dash_kpi_"] {
-              margin-top: -116px !important;
-              height: 116px !important;
-              position: relative !important;
-              z-index: 20 !important;
-          }
-
-          div[class*="st-key-dash_kpi_"] button {
-              width: 100% !important;
-              height: 116px !important;
-              min-height: 116px !important;
-              opacity: 0 !important;
-              cursor: pointer !important;
-              border: 0 !important;
-              background: transparent !important;
-              box-shadow: none !important;
-              padding: 0 !important;
-          }
-
-          .kpi-card::before {
-              content: "";
-              position: absolute;
-              left: 0;
-              top: 0;
-              bottom: 0;
-              width: 5px;
-              background: var(--accent);
-          }
-
-          .kpi-header {
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              margin-bottom: 11px;
-          }
-
-          .kpi-dot {
-              width: 9px;
-              height: 9px;
-              border-radius: 999px;
-              background: var(--accent);
-              box-shadow: 0 0 0 4px var(--accent-soft);
-              flex: 0 0 auto;
-          }
-
-          .kpi-label {
-              color: #475569;
-              font-size: .83rem;
-              font-weight: 700;
-              line-height: 1.15;
-          }
-
-          .kpi-value {
-              color: #0f172a;
-              font-size: 2rem;
-              font-weight: 800;
-              line-height: 1;
-              letter-spacing: -.035em;
-          }
-
-          .kpi-delta {
-              margin-top: 8px;
-              color: #64748b;
-              font-size: .76rem;
-          }
-
-          [data-testid="stDataFrame"] {
-              border: 1px solid #e2e8f0;
-              border-radius: 12px;
-              overflow: hidden;
-              box-shadow: 0 3px 12px rgba(15, 23, 42, .04);
-          }
-
-          [data-testid="stAlert"] {
-              border-radius: 12px !important;
-              border: 1px solid #dbeafe !important;
-              box-shadow: 0 3px 12px rgba(15, 23, 42, .035);
-          }
-
-          .critical {
-              border-radius: 12px !important;
-              box-shadow: 0 4px 14px rgba(239, 68, 68, .08);
-          }
-
-
-          /* Build 47 — navegação lateral validada */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] {
-              gap: .58rem !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-              position: relative !important;
-              display: flex !important;
-              align-items: center !important;
-              width: 100% !important;
-              min-height: 52px !important;
-              box-sizing: border-box !important;
-              margin: 0 !important;
-              padding: .72rem .8rem .72rem 3.25rem !important;
-              border: 1px solid #e2e8f0 !important;
-              border-radius: 12px !important;
-              background: #ffffff !important;
-              box-shadow: 0 2px 8px rgba(15, 23, 42, .035) !important;
-              cursor: pointer !important;
-              transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease !important;
-              overflow: hidden !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child {
-              display: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
-              margin: 0 !important;
-              color: #334155 !important;
-              font-size: .88rem !important;
-              line-height: 1.2 !important;
-              font-weight: 700 !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:hover {
-              transform: translateY(-1px) !important;
-              border-color: #cbd5e1 !important;
-              box-shadow: 0 5px 14px rgba(15, 23, 42, .07) !important;
-              background: #fbfdff !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {
-              content: "";
-              position: absolute;
-              left: 1.05rem;
-              top: 50%;
-              width: 21px;
-              height: 21px;
-              transform: translateY(-50%);
-              background: #5b6b80;
-              -webkit-mask-image: var(--nav-icon);
-              mask-image: var(--nav-icon);
-              -webkit-mask-repeat: no-repeat;
-              mask-repeat: no-repeat;
-              -webkit-mask-position: center;
-              mask-position: center;
-              -webkit-mask-size: contain;
-              mask-size: contain;
-              transition: background .12s ease;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(1) {
-              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M3 3h8v8H3V3Zm10 0h8v5h-8V3ZM3 13h8v8H3v-8Zm10-3h8v11h-8V10Z'/%3E%3C/svg%3E");
-          }
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(2) {
-              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M6 2h2v2h8V2h2v2h3v18H3V4h3V2Zm13 8H5v10h14V10ZM5 6v2h14V6H5Z'/%3E%3C/svg%3E");
-          }
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(3) {
-              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3L17.4 7 12 9.7 6.6 7 12 4.3ZM5 8.6l6 3v7.8l-6-3V8.6Zm8 10.8v-7.8l6-3v7.8l-6 3Z'/%3E%3C/svg%3E");
-          }
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(4) {
-              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M6 2h8l5 5v15H6V2Zm2 2v16h9V8h-4V4H8Zm7 1.4V6h.6L15 5.4ZM9 11h6v2H9v-2Zm0 4h6v2H9v-2Z'/%3E%3C/svg%3E");
-          }
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:nth-of-type(5) {
-              --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 4a8 8 0 1 1-7.45 5H2l3.5-4L9 9H6.65A6 6 0 1 0 12 6a5.9 5.9 0 0 0-3.1.87L7.85 5.16A7.93 7.93 0 0 1 12 4Zm-1 3h2v5.2l3.4 2-1 1.7L11 13.3V7Z'/%3E%3C/svg%3E");
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              background: linear-gradient(135deg, #112746 0%, #09172f 100%) !important;
-              border-color: #112746 !important;
-              box-shadow: 0 7px 18px rgba(9, 23, 47, .20) !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {
-              background: #ffffff !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::after {
-              content: "";
-              position: absolute;
-              left: 0;
-              top: 0;
-              bottom: 0;
-              width: 5px;
-              background: #ef3038;
-              border-radius: 12px 0 0 12px;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
-              color: #ffffff !important;
-          }
-
-
-          /* Build 48 — menu lateral exatamente no padrão visual validado */
-          div[class*="st-key-main_navigation"] {
-              width: 100% !important;
-          }
-
-          div[class*="st-key-main_navigation"] [data-testid="stRadio"],
-          div[class*="st-key-main_navigation"] [role="radiogroup"] {
-              width: 100% !important;
-              max-width: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] {
-              display: flex !important;
-              flex-direction: column !important;
-              align-items: stretch !important;
-              gap: .68rem !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] > div,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] > label {
-              width: 100% !important;
-              max-width: none !important;
-              flex: 0 0 auto !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-              position: relative !important;
-              display: flex !important;
-              align-items: center !important;
-              width: 100% !important;
-              min-width: 100% !important;
-              max-width: none !important;
-              min-height: 58px !important;
-              box-sizing: border-box !important;
-              margin: 0 !important;
-              padding: .78rem 2.55rem .78rem 3.35rem !important;
-              border: 1px solid #dfe5ec !important;
-              border-radius: 13px !important;
-              background: #ffffff !important;
-              box-shadow: 0 3px 10px rgba(15, 23, 42, .045) !important;
-              cursor: pointer !important;
-              overflow: hidden !important;
-              transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease, background .15s ease !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child {
-              display: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
-              margin: 0 !important;
-              padding: 0 !important;
-              color: #132b4c !important;
-              font-size: .92rem !important;
-              line-height: 1.15 !important;
-              font-weight: 700 !important;
-              white-space: nowrap !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:hover {
-              transform: translateY(-1px) !important;
-              border-color: #cbd5e1 !important;
-              background: #fbfdff !important;
-              box-shadow: 0 6px 16px rgba(15, 23, 42, .08) !important;
-          }
-
-          /* Ícone esquerdo */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {
-              content: "" !important;
-              position: absolute !important;
-              left: 1.05rem !important;
-              top: 50% !important;
-              width: 22px !important;
-              height: 22px !important;
-              transform: translateY(-50%) !important;
-              background: #173457 !important;
-              -webkit-mask-image: var(--nav-icon) !important;
-              mask-image: var(--nav-icon) !important;
-              -webkit-mask-repeat: no-repeat !important;
-              mask-repeat: no-repeat !important;
-              -webkit-mask-position: center !important;
-              mask-position: center !important;
-              -webkit-mask-size: contain !important;
-              mask-size: contain !important;
-          }
-
-          /* Seta direita */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {
-              content: "›" !important;
-              position: absolute !important;
-              right: 1rem !important;
-              top: 50% !important;
-              width: auto !important;
-              height: auto !important;
-              background: transparent !important;
-              transform: translateY(-53%) !important;
-              border-radius: 0 !important;
-              color: #94a3b8 !important;
-              font-size: 1.75rem !important;
-              line-height: 1 !important;
-              font-weight: 400 !important;
-          }
-
-          /* Ativo */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              min-height: 62px !important;
-              padding-left: 3.5rem !important;
-              border: 1px solid #0b1d38 !important;
-              border-left: 6px solid #ff454d !important;
-              border-radius: 13px !important;
-              background: linear-gradient(135deg, #132d50 0%, #081a34 100%) !important;
-              box-shadow: 0 8px 20px rgba(8, 26, 52, .20) !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
-              color: #ffffff !important;
-              font-weight: 800 !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {
-              background: #ffffff !important;
-              left: 1.08rem !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::after {
-              color: #ffffff !important;
-              background: transparent !important;
-          }
-
-        '''
-        extra_css += '''
-
-          /* Build 49 — navegação somente texto */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-              justify-content: center !important;
-              padding: .78rem 1rem !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {
-              content: none !important;
-              display: none !important;
-              width: 0 !important;
-              height: 0 !important;
-              background: none !important;
-              -webkit-mask-image: none !important;
-              mask-image: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
-              width: 100% !important;
-              text-align: center !important;
-              text-transform: uppercase !important;
-              letter-spacing: .045em !important;
-              font-size: .84rem !important;
-              font-weight: 800 !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              padding: .78rem 1rem !important;
-              border-left: 6px solid #ff454d !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
-              color: #ffffff !important;
-          }
-
-          /* Build 50 — alinhamento central definitivo do texto */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-              padding-left: 1rem !important;
-              padding-right: 1rem !important;
-              text-align: center !important;
-          }
-
-          /* Remove o controle visual nativo do radio sem afetar o texto */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div[aria-hidden="true"],
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label > span[aria-hidden="true"],
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div[aria-hidden="true"] {
-              position: absolute !important;
-              opacity: 0 !important;
-              visibility: hidden !important;
-              width: 0 !important;
-              min-width: 0 !important;
-              height: 0 !important;
-              min-height: 0 !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              border: 0 !important;
-              overflow: hidden !important;
-              pointer-events: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-              flex: 1 1 100% !important;
-              width: 100% !important;
-              min-width: 0 !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              text-align: center !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
-              display: block !important;
-              width: 100% !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              text-align: center !important;
-          }
-'''
-        extra_css += '''
-
-          /* Build 51 — seletor fixo à esquerda, texto centralizado */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-              position: relative !important;
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-              padding: 0 2.6rem !important;
-              min-height: 46px !important;
-              text-align: center !important;
-          }
-
-          /* O primeiro bloco interno do radio fica absolutamente posicionado à esquerda */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child {
-              display: flex !important;
-              position: absolute !important;
-              left: .9rem !important;
-              top: 50% !important;
-              transform: translateY(-50%) !important;
-              width: 18px !important;
-              min-width: 18px !important;
-              height: 18px !important;
-              min-height: 18px !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              opacity: 1 !important;
-              visibility: visible !important;
-              overflow: visible !important;
-              pointer-events: none !important;
-              align-items: center !important;
-              justify-content: center !important;
-              z-index: 3 !important;
-          }
-
-          /* Mantém o input funcional, mas não deixa ele ocupar espaço no fluxo */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"] {
-              position: absolute !important;
-              left: .9rem !important;
-              top: 50% !important;
-              transform: translateY(-50%) !important;
-              margin: 0 !important;
-              z-index: 4 !important;
-          }
-
-          /* O texto ocupa o card inteiro e fica matematicamente centralizado */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-              position: absolute !important;
-              left: 0 !important;
-              right: 0 !important;
-              top: 0 !important;
-              bottom: 0 !important;
-              width: 100% !important;
-              margin: 0 !important;
-              padding: 0 2.6rem !important;
-              box-sizing: border-box !important;
-              text-align: center !important;
-              pointer-events: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
-              width: 100% !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              text-align: center !important;
-              line-height: 1 !important;
-          }
-
-          /* Faixa vermelha do item ativo, sem interferir no seletor */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              border-left: 5px solid #ef3038 !important;
-              padding-left: 2.6rem !important;
-              padding-right: 2.6rem !important;
-          }
-'''
-        extra_css += '\n\n          /* Build 52 — seletor visual fixo no canto esquerdo */\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label {\n              position: relative !important;\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              min-height: 46px !important;\n              padding: 0 2.7rem !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child {\n              position: absolute !important;\n              display: none !important;\n              opacity: 0 !important;\n              visibility: hidden !important;\n              width: 0 !important;\n              min-width: 0 !important;\n              height: 0 !important;\n              min-height: 0 !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              border: 0 !important;\n              overflow: hidden !important;\n              pointer-events: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before {\n              content: "" !important;\n              display: block !important;\n              position: absolute !important;\n              left: 1rem !important;\n              top: 50% !important;\n              width: 13px !important;\n              height: 13px !important;\n              min-width: 13px !important;\n              min-height: 13px !important;\n              transform: translateY(-50%) !important;\n              box-sizing: border-box !important;\n              border: 1px solid #cbd5e1 !important;\n              border-radius: 999px !important;\n              background: #f8fafc !important;\n              box-shadow: none !important;\n              -webkit-mask-image: none !important;\n              mask-image: none !important;\n              z-index: 5 !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {\n              border-color: #ff454d !important;\n              background: radial-gradient(circle at center, #ffffff 0 24%, #ff454d 27% 100%) !important;\n              box-shadow: 0 0 0 2px rgba(255, 69, 77, .10) !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {\n              content: none !important;\n              display: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {\n              position: static !important;\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              flex: 1 1 100% !important;\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n              pointer-events: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {\n              display: block !important;\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n              line-height: 1 !important;\n          }\n'
-
-        extra_css += '\n\n          /* Build 53 — menu sem bolinha/check */\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::before,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {\n              content: none !important;\n              display: none !important;\n              width: 0 !important;\n              height: 0 !important;\n              min-width: 0 !important;\n              min-height: 0 !important;\n              border: 0 !important;\n              background: none !important;\n              box-shadow: none !important;\n              -webkit-mask-image: none !important;\n              mask-image: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child:not([data-testid="stMarkdownContainer"]) {\n              position: absolute !important;\n              display: none !important;\n              opacity: 0 !important;\n              visibility: hidden !important;\n              width: 0 !important;\n              height: 0 !important;\n              min-width: 0 !important;\n              min-height: 0 !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              overflow: hidden !important;\n              pointer-events: none !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label {\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              min-height: 46px !important;\n              padding: 0 1rem !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {\n              position: static !important;\n              display: flex !important;\n              align-items: center !important;\n              justify-content: center !important;\n              flex: 1 1 100% !important;\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {\n              width: 100% !important;\n              margin: 0 !important;\n              padding: 0 !important;\n              text-align: center !important;\n          }\n\n          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {\n              border-left: 5px solid #ef3038 !important;\n              padding-left: 1rem !important;\n              padding-right: 1rem !important;\n          }\n'
-
-
-        extra_css += r"""
-
-          /* Build 86 — navegação igual ao Controle de NFs */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] {
-              display: flex !important;
-              flex-direction: column !important;
-              align-items: flex-start !important;
-              gap: .58rem !important;
-              width: 100% !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] > div,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] > label {
-              width: auto !important;
-              max-width: 100% !important;
-              flex: 0 0 auto !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-              position: relative !important;
-              width: auto !important;
-              max-width: 100% !important;
-              min-height: 48px !important;
-              display: flex !important;
-              align-items: center !important;
-              justify-content: flex-start !important;
-              padding: .66rem 1rem .66rem 3rem !important;
-              margin: 0 !important;
-              border: 1px solid #e2e8f0 !important;
-              border-radius: 12px !important;
-              background: #ffffff !important;
-              box-shadow: 0 2px 8px rgba(15,23,42,.035) !important;
-              cursor: pointer !important;
-              box-sizing: border-box !important;
-              overflow: visible !important;
-              transition: .12s ease !important;
-              text-align: left !important;
-          }
-
-          /* Esconde o radio nativo e desenha o mesmo marcador visual do app de NFs. */
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label input[type="radio"],
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label > div:first-child:not([data-testid="stMarkdownContainer"]),
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-baseweb="radio"] > div:first-child {
-              position: absolute !important;
-              display: none !important;
-              opacity: 0 !important;
-              visibility: hidden !important;
-              width: 0 !important;
-              height: 0 !important;
-              min-width: 0 !important;
-              min-height: 0 !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: hidden !important;
-              pointer-events: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label::after {
-              content: "" !important;
-              display: block !important;
-              position: absolute !important;
-              left: 1rem !important;
-              top: 50% !important;
-              width: 16px !important;
-              height: 16px !important;
-              min-width: 16px !important;
-              min-height: 16px !important;
-              transform: translateY(-50%) !important;
-              box-sizing: border-box !important;
-              border: 1.5px solid #d1d5db !important;
-              border-radius: 999px !important;
-              background: #ffffff !important;
-              box-shadow: none !important;
-              z-index: 5 !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] {
-              position: static !important;
-              display: flex !important;
-              align-items: center !important;
-              justify-content: flex-start !important;
-              flex: 0 1 auto !important;
-              width: auto !important;
-              min-width: 0 !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              text-align: left !important;
-              pointer-events: none !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label p {
-              display: block !important;
-              width: auto !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              color: #334155 !important;
-              font-size: .86rem !important;
-              line-height: 1.2 !important;
-              font-weight: 700 !important;
-              text-align: left !important;
-              text-transform: uppercase !important;
-              letter-spacing: 0 !important;
-              white-space: nowrap !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:hover {
-              transform: translateY(-1px) !important;
-              border-color: #cbd5e1 !important;
-              background: #fbfdff !important;
-              box-shadow: 0 5px 14px rgba(15,23,42,.07) !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) {
-              min-height: 48px !important;
-              padding: .66rem 1rem .66rem 3rem !important;
-              background: #111827 !important;
-              border: 1px solid #111827 !important;
-              border-left: 1px solid #111827 !important;
-              border-radius: 12px !important;
-              box-shadow: 0 5px 14px rgba(17,24,39,.14) !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::before {
-              content: "" !important;
-              display: block !important;
-              position: absolute !important;
-              left: .42rem !important;
-              top: 50% !important;
-              width: 4px !important;
-              height: 20px !important;
-              min-width: 4px !important;
-              min-height: 20px !important;
-              border: 0 !important;
-              border-radius: 999px !important;
-              background: #ef4444 !important;
-              box-shadow: none !important;
-              transform: translateY(-50%) !important;
-              z-index: 6 !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked)::after {
-              border-color: #0b1220 !important;
-              background: radial-gradient(circle at center, #ffffff 0 24%, #0b1220 28% 100%) !important;
-          }
-
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) [data-testid="stMarkdownContainer"] p,
-          div[class*="st-key-main_navigation"] [role="radiogroup"] label:has(input:checked) p {
-              color: #ffffff !important;
-              font-weight: 800 !important;
-          }
-
-          @media (max-width: 900px) {
-              div[class*="st-key-main_navigation"] [role="radiogroup"] {
-                  gap: .58rem !important;
-              }
-              div[class*="st-key-main_navigation"] [role="radiogroup"] label {
-                  min-height: 48px !important;
-              }
-          }
-"""
-
-        # Preserva apenas estilos internos (KPIs/tabelas) da camada antiga.
-        # Moldura, header e sidebar pertencem exclusivamente ao shell SETTA canônico.
-        _internal_start = extra_css.find('.kpi-card {')
-        if _internal_start >= 0:
-            extra_css = extra_css[_internal_start:]
-        body = body.replace('</style>', extra_css + '\n</style>')
-
-    return _original_markdown(body, *args, **kwargs)
-
-
-st.markdown = _markdown_ui
-
-_original_metric = _setta_native_callable(DeltaGenerator.metric, "_metric_ui", "_original_metric")
-
-
 def _set_dashboard_filter(value):
     st.session_state["dashboard_filter"] = value
 
 
-def _metric_ui(self, label, value, *args, **kwargs):
+_METRIC_PALETTE = {
+    "Projetos": ("#2563eb", "rgba(37,99,235,.12)"),
+    "Aguardando separação": ("#d97706", "rgba(217,119,6,.13)"),
+    "Em processo": ("#0891b2", "rgba(8,145,178,.12)"),
+    "Com pendências": ("#f97316", "rgba(249,115,22,.13)"),
+    "Entregues": ("#16a34a", "rgba(22,163,74,.12)"),
+    "Alertas críticos": ("#dc2626", "rgba(220,38,38,.12)"),
+    "Pendentes": ("#d97706", "rgba(217,119,6,.13)"),
+    "Separados": ("#0891b2", "rgba(8,145,178,.12)"),
+    "Materiais p/ entrega": ("#7c3aed", "rgba(124,58,237,.12)"),
+    "Linhas do Excel": ("#475569", "rgba(71,85,105,.12)"),
+    "OPs consolidadas": ("#2563eb", "rgba(37,99,235,.12)"),
+    "OPs com data": ("#16a34a", "rgba(22,163,74,.12)"),
+    "OPs sem data": ("#d97706", "rgba(217,119,6,.13)"),
+    "Itens": ("#2563eb", "rgba(37,99,235,.12)"),
+    "Entrega pendente": ("#dc2626", "rgba(220,38,38,.12)"),
+    "Sem estoque": ("#d97706", "rgba(217,119,6,.13)"),
+    "Aguardando data": ("#0891b2", "rgba(8,145,178,.12)"),
+    "Arquivos": ("#2563eb", "rgba(37,99,235,.12)"),
+    "Snapshots": ("#0891b2", "rgba(8,145,178,.12)"),
+    "Alterações/eventos": ("#7c3aed", "rgba(124,58,237,.12)"),
+    "Linhas tratadas": ("#2563eb", "rgba(37,99,235,.12)"),
+    "Lançadas": ("#16a34a", "rgba(22,163,74,.12)"),
+    "Pré notas": ("#d97706", "rgba(217,119,6,.13)"),
+    "Linhas consolidadas": ("#7c3aed", "rgba(124,58,237,.12)"),
+}
+
+_DASHBOARD_METRIC_FILTERS = {
+    "Projetos": ("Projetos", "all"),
+    "Aguardando separação": ("Aguardando separação", "waiting"),
+    "Em processo": ("Em processo", "in_process"),
+    "Com pendências": ("Com pendências", "with_pending"),
+    "Entregues": ("Entregues", "delivered"),
+    "Alertas críticos": ("Alertas críticos", "alerts"),
+}
+
+
+def _metric_card(container, label, value, delta=None, **_kwargs):
+    """Renderiza um KPI explícito sem alterar DeltaGenerator.metric globalmente."""
     label_text = str(label)
     value_text = str(value)
-
-    palette = {
-        "Projetos": ("#2563eb", "rgba(37,99,235,.12)"),
-        "Aguardando separação": ("#d97706", "rgba(217,119,6,.13)"),
-        "Em processo": ("#0891b2", "rgba(8,145,178,.12)"),
-        "Com pendências": ("#f97316", "rgba(249,115,22,.13)"),
-        "Entregues": ("#16a34a", "rgba(22,163,74,.12)"),
-        "Alertas críticos": ("#dc2626", "rgba(220,38,38,.12)"),
-        "Pendentes": ("#d97706", "rgba(217,119,6,.13)"),
-        "Separados": ("#0891b2", "rgba(8,145,178,.12)"),
-        "Materiais p/ entrega": ("#7c3aed", "rgba(124,58,237,.12)"),
-        "Linhas do Excel": ("#475569", "rgba(71,85,105,.12)"),
-        "OPs consolidadas": ("#2563eb", "rgba(37,99,235,.12)"),
-        "OPs com data": ("#16a34a", "rgba(22,163,74,.12)"),
-        "OPs sem data": ("#d97706", "rgba(217,119,6,.13)"),
-        "Itens": ("#2563eb", "rgba(37,99,235,.12)"),
-        "Entrega pendente": ("#dc2626", "rgba(220,38,38,.12)"),
-        "Sem estoque": ("#d97706", "rgba(217,119,6,.13)"),
-        "Aguardando data": ("#0891b2", "rgba(8,145,178,.12)"),
-        "Arquivos": ("#2563eb", "rgba(37,99,235,.12)"),
-        "Snapshots": ("#0891b2", "rgba(8,145,178,.12)"),
-        "Alterações/eventos": ("#7c3aed", "rgba(124,58,237,.12)"),
-        "Linhas tratadas": ("#2563eb", "rgba(37,99,235,.12)"),
-        "Lançadas": ("#16a34a", "rgba(22,163,74,.12)"),
-        "Pré notas": ("#d97706", "rgba(217,119,6,.13)"),
-        "Linhas consolidadas": ("#7c3aed", "rgba(124,58,237,.12)"),
-    }
-    accent, soft = palette.get(label_text, ("#2563eb", "rgba(37,99,235,.12)"))
-    delta = kwargs.get("delta")
-    delta_html = f'<div class="kpi-delta">{escape(str(delta))}</div>' if delta not in (None, "") else ""
-
-    filter_values = {
-        "Projetos": ("Projetos", "all"),
-        "Aguardando separação": ("Aguardando separação", "waiting"),
-        "Em processo": ("Em processo", "in_process"),
-        "Com pendências": ("Com pendências", "with_pending"),
-        "Entregues": ("Entregues", "delivered"),
-        "Alertas críticos": ("Alertas críticos", "alerts"),
-    }
+    accent, soft = _METRIC_PALETTE.get(label_text, ("#2563eb", "rgba(37,99,235,.12)"))
+    delta_html = (
+        f'<div class="kpi-delta">{escape(str(delta))}</div>'
+        if delta not in (None, "")
+        else ""
+    )
 
     selected_style = ""
-    if label_text in filter_values:
-        target, _ = filter_values[label_text]
+    filter_target = _DASHBOARD_METRIC_FILTERS.get(label_text)
+    if filter_target:
+        target, _slug = filter_target
         if st.session_state.get("dashboard_filter", "Projetos") == target:
-            selected_style = f"box-shadow:0 0 0 2px {accent}, 0 8px 22px rgba(15,23,42,.085);"
+            selected_style = (
+                f"box-shadow:0 0 0 2px {accent}, "
+                "0 8px 22px rgba(15,23,42,.085);"
+            )
 
-    html = (
-        f'<div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};{selected_style}">'
-        '<div class="kpi-header">'
-        '<span class="kpi-dot"></span>'
-        f'<span class="kpi-label">{escape(label_text)}</span>'
-        '</div>'
-        f'<div class="kpi-value">{escape(value_text)}</div>'
-        f'{delta_html}'
-        '</div>'
+    container.markdown(
+        (
+            f'<div class="kpi-card" style="--accent:{accent};--accent-soft:{soft};{selected_style}">'
+            '<div class="kpi-header">'
+            '<span class="kpi-dot"></span>'
+            f'<span class="kpi-label">{escape(label_text)}</span>'
+            '</div>'
+            f'<div class="kpi-value">{escape(value_text)}</div>'
+            f'{delta_html}'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
     )
-    self.markdown(html, unsafe_allow_html=True)
 
-    if label_text in filter_values:
-        target, slug = filter_values[label_text]
-        self.button(
+    if filter_target:
+        target, slug = filter_target
+        container.button(
             " ",
             key=f"dash_kpi_{slug}",
             on_click=_set_dashboard_filter,
             args=(target,),
             use_container_width=True,
         )
-    return None
 
 
-DeltaGenerator.metric = _metric_ui
+def _with_schedule_last_change(data):
+    """Inclui a última alteração do cronograma apenas nas tabelas que a solicitam."""
+    if not isinstance(data, pd.DataFrame) or data.empty or "op" not in data.columns:
+        return data
+    if "ultima_alteracao_cronograma" in data.columns:
+        return data
 
-_original_multiselect = _setta_native_callable(DeltaGenerator.multiselect, "_multiselect_ui", "_original_multiselect")
+    schedule = st.session_state.get("schedule")
+    if (
+        not isinstance(schedule, pd.DataFrame)
+        or schedule.empty
+        or "op" not in schedule.columns
+        or "ultima_alteracao_cronograma" not in schedule.columns
+    ):
+        return data
 
+    lookup = schedule[["op", "ultima_alteracao_cronograma"]].drop_duplicates(
+        "op", keep="last"
+    )
+    return data.merge(lookup, on="op", how="left")
 
-def _multiselect_ui(self, label, options, *args, **kwargs):
-    if label == "Status":
-        opcoes = list(options)
-        selecionado = self.selectbox(
-            "Status",
-            ["Todos"] + opcoes,
-            index=0,
-            key="filtro_status_dropdown",
-        )
-        return opcoes if selecionado == "Todos" else [selecionado]
-    return _original_multiselect(self, label, options, *args, **kwargs)
-
-
-DeltaGenerator.multiselect = _multiselect_ui
-
-_original_radio = _setta_native_callable(DeltaGenerator.radio, "_radio_ui", "_original_radio")
-
-
-def _radio_ui(self, label, options, *args, **kwargs):
-    return _original_radio(self, label, list(options), *args, **kwargs)
-
-DeltaGenerator.radio = _radio_ui
-
-_original_dataframe = _setta_native_callable(DeltaGenerator.dataframe, "_dataframe_ui", "_original_dataframe")
-
-
-def _dataframe_ui(self, data=None, *args, **kwargs):
-    try:
-        if isinstance(data, pd.DataFrame) and {"op", "data_separacao", "status"}.issubset(data.columns):
-            schedule = st.session_state.get("schedule")
-            if (
-                isinstance(schedule, pd.DataFrame)
-                and "ultima_alteracao_cronograma" in schedule.columns
-                and "ultima_alteracao_cronograma" not in data.columns
-            ):
-                lookup = schedule[["op", "ultima_alteracao_cronograma"]].drop_duplicates("op", keep="last")
-                data = data.merge(lookup, on="op", how="left")
-                cfg = dict(kwargs.get("column_config") or {})
-                cfg["ultima_alteracao_cronograma"] = st.column_config.DateColumn(
-                    "Última inclusão/alteração", format="DD/MM/YYYY"
-                )
-                kwargs["column_config"] = cfg
-    except Exception:
-        pass
-    return _original_dataframe(self, data, *args, **kwargs)
-
-
-DeltaGenerator.dataframe = _dataframe_ui
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -3525,6 +2457,26 @@ section[data-testid="stSidebar"][aria-expanded="false"]>div{{width:0!important;m
 .app-title{{margin:0!important;padding:0!important;font-size:2.55rem!important;line-height:1.08!important;font-weight:800!important;letter-spacing:-.04em!important;color:#050505!important;text-transform:uppercase!important}}
 .app-sub{{margin-top:.72rem!important;margin-bottom:1.65rem!important;color:#4f5661!important;font-size:.94rem!important;line-height:1.35!important;text-transform:uppercase!important}}
 
+/* Componentes internos explícitos — sem monkey patch global */
+.kpi-card{{
+  position:relative!important;min-height:116px!important;padding:16px 18px 15px 18px!important;
+  border:1px solid #e2e8f0!important;border-radius:14px!important;background:#fff!important;
+  box-shadow:0 4px 16px rgba(15,23,42,.055)!important;overflow:hidden!important;
+  transition:transform .12s ease,box-shadow .12s ease!important;
+}}
+.kpi-card:hover{{transform:translateY(-1px)!important;box-shadow:0 8px 22px rgba(15,23,42,.085)!important}}
+.kpi-card::before{{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent)}}
+.kpi-header{{display:flex;align-items:center;gap:8px;margin-bottom:11px}}
+.kpi-dot{{width:9px;height:9px;border-radius:999px;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);flex:0 0 auto}}
+.kpi-label{{color:#475569;font-size:.83rem;font-weight:700;line-height:1.15}}
+.kpi-value{{color:#0f172a;font-size:2rem;font-weight:800;line-height:1;letter-spacing:-.035em}}
+.kpi-delta{{margin-top:8px;color:#64748b;font-size:.76rem}}
+div[class*="st-key-dash_kpi_"]{{margin-top:-116px!important;height:116px!important;position:relative!important;z-index:20!important}}
+div[class*="st-key-dash_kpi_"] button{{
+  width:100%!important;height:116px!important;min-height:116px!important;opacity:0!important;cursor:pointer!important;
+  border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important;
+}}
+
 /* Conteúdo interno do Gestão de Entregas — preservado */
 .critical{{border:1px solid #ef4444!important;border-left:6px solid #ef4444!important;border-radius:8px!important;padding:12px 14px!important;background:rgba(239,68,68,.06)!important;margin:8px 0 14px!important}}
 .project-card{{border:1px solid #d1d5db!important;border-radius:10px!important;padding:14px 16px!important;margin-top:12px!important;background:rgba(249,250,251,.72)!important}}
@@ -3719,12 +2671,12 @@ if page == "Dashboard":
     total_delivered = int((schedule["grupo_operacional"] == "Entregues").sum()) if not schedule.empty else 0
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Projetos", total_projects)
-    c2.metric("Aguardando separação", total_waiting)
-    c3.metric("Em processo", total_in_process)
-    c4.metric("Com pendências", total_with_pending)
-    c5.metric("Entregues", total_delivered)
-    c6.metric("Alertas críticos", alerts)
+    _metric_card(c1, "Projetos", total_projects)
+    _metric_card(c2, "Aguardando separação", total_waiting)
+    _metric_card(c3, "Em processo", total_in_process)
+    _metric_card(c4, "Com pendências", total_with_pending)
+    _metric_card(c5, "Entregues", total_delivered)
+    _metric_card(c6, "Alertas críticos", alerts)
 
     if alerts:
         st.markdown(f'<div class="critical"><b>{alerts} projeto(s) com tratativa PCP pendente.</b></div>', unsafe_allow_html=True)
@@ -4408,10 +3360,15 @@ elif page == "Cronograma":
                     unsafe_allow_html=True,
                 )
                 st.dataframe(
-                    pending[["op", "cliente", "produto", "data_separacao", "status", "motivo_alerta", "tratativa_pcp"]],
+                    _with_schedule_last_change(
+                        pending[["op", "cliente", "produto", "data_separacao", "status", "motivo_alerta", "tratativa_pcp"]]
+                    ),
                     use_container_width=True,
                     hide_index=True,
-                    column_config={"data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY")},
+                    column_config={
+                        "data_separacao": st.column_config.DateColumn("Data Separação", format="DD/MM/YYYY"),
+                        "ultima_alteracao_cronograma": st.column_config.DateColumn("Última inclusão/alteração", format="DD/MM/YYYY"),
+                    },
                 )
 
                 teams_chat_url = (
@@ -4751,10 +3708,10 @@ elif page == "Materiais":
             st.info("Nenhuma aba Demanda_Projeto carregada ou nenhum material encontrado para os filtros selecionados.")
         else:
             mat_m1, mat_m2, mat_m3, mat_m4 = st.columns(4)
-            mat_m1.metric("Total de linhas", total_linhas)
-            mat_m2.metric("Pendências", total_condicao_pendencia)
-            mat_m3.metric("Separados", total_separados)
-            mat_m4.metric("Com problema", total_problemas)
+            _metric_card(mat_m1, "Total de linhas", total_linhas)
+            _metric_card(mat_m2, "Pendências", total_condicao_pendencia)
+            _metric_card(mat_m3, "Separados", total_separados)
+            _metric_card(mat_m4, "Com problema", total_problemas)
 
             tab_pending, tab_done, tab_problem = _lazy_tabs([
                 f"Pendentes de separação ({total_pendentes})",
@@ -5041,10 +3998,10 @@ elif page == "NFs":
         st.info("AINDA NÃO EXISTE UMA BASE DE NFS SALVA. VERIFIQUE HISTÓRICO > ACOMPANHAMENTO DE API.")
     else:
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Linhas tratadas", int(nf_meta.get("qtd_linhas_tratadas", 0) or 0))
-        m2.metric("Lançadas", int(nf_meta.get("qtd_lancadas", 0) or 0))
-        m3.metric("Pré notas", int(nf_meta.get("qtd_pre_notas", 0) or 0))
-        m4.metric("Naturezas consideradas", len(NF_ALLOWED_NATURES))
+        _metric_card(m1, "Linhas tratadas", int(nf_meta.get("qtd_linhas_tratadas", 0) or 0))
+        _metric_card(m2, "Lançadas", int(nf_meta.get("qtd_lancadas", 0) or 0))
+        _metric_card(m3, "Pré notas", int(nf_meta.get("qtd_pre_notas", 0) or 0))
+        _metric_card(m4, "Naturezas consideradas", len(NF_ALLOWED_NATURES))
 
         atualizado = nf_meta.get("atualizado_em")
         atualizado_txt = _fmt_feed_datetime(atualizado) if atualizado else ""
@@ -5257,9 +4214,9 @@ elif page == "Histórico":
                     daily_alerts["encerrado_em"] = encerrado.dt.strftime("%d/%m/%Y %H:%M").fillna("")
 
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Registros encontrados", total_historico)
-                m2.metric("Exibindo", len(daily_alerts))
-                m3.metric("OPs na tela", daily_alerts["op"].astype(str).nunique())
+                _metric_card(m1, "Registros encontrados", total_historico)
+                _metric_card(m2, "Exibindo", len(daily_alerts))
+                _metric_card(m3, "OPs na tela", daily_alerts["op"].astype(str).nunique())
                 if total_historico > len(daily_alerts):
                     st.caption("Exibindo os primeiros 100 registros. Use Data e OP para refinar a consulta.")
 
@@ -5433,10 +4390,10 @@ def _render_cronograma_feed():
         try:
             base, meta = read_macro_schedule(uploaded)
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Linhas do Excel", meta["linhas_excel"])
-            c2.metric("OPs consolidadas", meta["ops_unicas"])
-            c3.metric("OPs com data", meta["ops_com_data"])
-            c4.metric("OPs sem data", meta["ops_sem_data"])
+            _metric_card(c1, "Linhas do Excel", meta["linhas_excel"])
+            _metric_card(c2, "OPs consolidadas", meta["ops_unicas"])
+            _metric_card(c3, "OPs com data", meta["ops_com_data"])
+            _metric_card(c4, "OPs sem data", meta["ops_sem_data"])
 
             if meta["linhas_consolidadas"] > 0:
                 st.warning(
@@ -5601,10 +4558,10 @@ def _render_nf_feed():
             treated_nf, nf_import_meta = processar_nf_bruto(raw_nf)
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Linhas elegíveis", nf_import_meta["linhas_brutas"])
-            c2.metric("Linhas tratadas", nf_import_meta["linhas_tratadas"])
-            c3.metric("Lançadas", nf_import_meta["lancadas"])
-            c4.metric("Pré notas", nf_import_meta["pre_notas"])
+            _metric_card(c1, "Linhas elegíveis", nf_import_meta["linhas_brutas"])
+            _metric_card(c2, "Linhas tratadas", nf_import_meta["linhas_tratadas"])
+            _metric_card(c3, "Lançadas", nf_import_meta["lancadas"])
+            _metric_card(c4, "Pré notas", nf_import_meta["pre_notas"])
 
             if nf_import_meta.get("linhas_ignoradas_natureza", 0):
                 st.info(
@@ -6077,9 +5034,9 @@ def _render_historical_loader():
 
     payload = _build_history_payload(prepared)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Arquivos", len(payload["imports"]))
-    c2.metric("Snapshots", len(payload["snapshots"]))
-    c3.metric("Alterações/eventos", len(payload["events"]))
+    _metric_card(c1, "Arquivos", len(payload["imports"]))
+    _metric_card(c2, "Snapshots", len(payload["snapshots"]))
+    _metric_card(c3, "Alterações/eventos", len(payload["events"]))
 
     st.warning(
         "Depois de gravar, uma data já carregada não poderá ser carregada novamente pelo app. "
@@ -6230,16 +5187,16 @@ if globals().get("page") == "Histórico":
                 })
 
                 hm1, hm2, hm3, hm4 = st.columns(4)
-                hm1.metric("Registros", len(material_history_view))
-                hm2.metric(
+                _metric_card(hm1, "Registros", len(material_history_view))
+                _metric_card(hm2, 
                     "Separações",
                     int(material_history_view["Ação"].eq("MARCADO COMO SEPARADO").sum()),
                 )
-                hm3.metric(
+                _metric_card(hm3, 
                     "Problemas",
                     int(material_history_view["Ação"].eq("PROBLEMA REGISTRADO").sum()),
                 )
-                hm4.metric(
+                _metric_card(hm4, 
                     "Comentários",
                     int(material_history_view["Ação"].eq("COMENTÁRIO").sum()),
                 )
