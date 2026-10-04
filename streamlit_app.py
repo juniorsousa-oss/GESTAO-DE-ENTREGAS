@@ -1,6 +1,8 @@
 from pathlib import Path
 from html import escape
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+from io import BytesIO
 import os
 import re
 import json
@@ -13,6 +15,37 @@ from PIL import Image
 import central_entregas_data as central_data
 import setta_shell
 import entrega_api
+
+try:
+    _GLOBAL_VISUAL_CONFIG = central_data.load_visual_config()
+except Exception:
+    _GLOBAL_VISUAL_CONFIG = {}
+
+SETTA_UI_CONFIG = setta_shell.build_ui_config(
+    _GLOBAL_VISUAL_CONFIG.get("ui_config") or {}
+)
+
+
+def _global_browser_icon():
+    try:
+        raw = central_data.favicon_bytes(_GLOBAL_VISUAL_CONFIG)
+        if raw:
+            image = Image.open(BytesIO(raw))
+            image.load()
+            return image
+    except Exception:
+        pass
+    return str(Path(__file__).parent / "favicon.png.png")
+
+
+st.set_page_config(
+    page_title="GESTÃO DE ENTREGAS | SETTA",
+    page_icon=_global_browser_icon(),
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+TZ = ZoneInfo("America/Sao_Paulo")
 
 AUDIT_RESPONSIBLE_ACTIONS = {
     "update_status_bulk",
@@ -321,7 +354,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 100
+APP_BUILD = 101
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -477,26 +510,6 @@ def _with_schedule_last_change(data):
     return data.merge(lookup, on="op", how="left")
 
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from io import BytesIO
-from pathlib import Path
-import base64
-import json
-
-import pandas as pd
-import streamlit as st
-
-try:
-    _GLOBAL_VISUAL_CONFIG = central_data.load_visual_config()
-except Exception:
-    _GLOBAL_VISUAL_CONFIG = {}
-
-SETTA_UI_CONFIG = setta_shell.build_ui_config(
-    _GLOBAL_VISUAL_CONFIG.get("ui_config") or {}
-)
-
-
 def _setta_sidebar_is_open():
     return bool(st.session_state.get("_setta_sidebar_open", False))
 
@@ -509,25 +522,6 @@ def _setta_close_sidebar():
     st.session_state["_setta_sidebar_open"] = False
 
 
-def _global_browser_icon():
-    try:
-        raw = central_data.favicon_bytes(_GLOBAL_VISUAL_CONFIG)
-        if raw:
-            image = Image.open(BytesIO(raw))
-            image.load()
-            return image
-    except Exception:
-        pass
-    return str(Path(__file__).parent / "favicon.png.png")
-
-st.set_page_config(
-    page_title="GESTÃO DE ENTREGAS | SETTA",
-    page_icon=_global_browser_icon(),
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-TZ = ZoneInfo("America/Sao_Paulo")
 PRIORITY_STATUS = "Prioridade solicitada"
 STATUS = ["Pendências", "Aguardando separação", "Em separação", PRIORITY_STATUS, "Separado", "Entregue"]
 MANUAL_STATUS = ["Em separação", PRIORITY_STATUS, "Separado"]
