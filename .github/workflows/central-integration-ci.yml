@@ -83,6 +83,11 @@ jobs:
           assert "def _parse_br_schedule_date(value):" in app
           assert 'raw_for022 = central_data.download_source_bytes("for022", token)' in app
           assert 'download_preferred_source("for022", token)' not in app
+          assert "_ja_em_pendencias" in app
+          assert 'result.loc[_ja_em_pendencias, "alerta_data_ativo"] = False' in app
+          alert_migration = Path("supabase/migrations/20261007_suppress_critical_alerts_after_first_delivery.sql")
+          assert alert_migration.exists()
+          assert "coalesce(r.possui_entrega,false) = true" in alert_migration.read_text(encoding="utf-8")
           for dead_name in (
               "_load_operator_options",
               "_sync_materials_from_supabase",
