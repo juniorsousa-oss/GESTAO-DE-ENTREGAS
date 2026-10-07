@@ -688,8 +688,73 @@ def normalize_op(value):
     return txt[:-2] if txt.endswith(".0") else txt
 
 
+def _parse_br_schedule_date(value):
+    """Interpreta datas do FOR022 sem permitir inversão dia/mês."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+
+    if isinstance(value, pd.Timestamp):
+        return value.date()
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+
+    # Excel serial quando a célula chega sem estilo de data.
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            number = float(value)
+            if 20000 <= number <= 80000:
+                return (datetime(1899, 12, 30) + timedelta(days=number)).date()
+        except Exception:
+            return None
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    # ISO produzido pela Central/openpyxl: nunca aplicar dayfirst aqui.
+    iso_match = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw)
+    if iso_match:
+        try:
+            return date(
+                int(iso_match.group(1)),
+                int(iso_match.group(2)),
+                int(iso_match.group(3)),
+            )
+        except ValueError:
+            return None
+
+    # FOR022 brasileiro: DD/MM/AAAA (ou DD-MM-AAAA).
+    br_match = re.match(
+        r"^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})(?:\s+.*)?$",
+        raw,
+    )
+    if br_match:
+        try:
+            day = int(br_match.group(1))
+            month = int(br_match.group(2))
+            year = int(br_match.group(3))
+            if year < 100:
+                year += 2000
+            return date(year, month, day)
+        except ValueError:
+            return None
+
+    # Contingência para formatos incomuns; mantém prioridade brasileira.
+    parsed = pd.to_datetime(raw, errors="coerce", dayfirst=True)
+    if pd.isna(parsed):
+        return None
+    return parsed.date()
+
+
 def parse_dates(series):
-    return pd.to_datetime(series, errors="coerce", dayfirst=True, format="mixed").dt.date
+    return series.map(_parse_br_schedule_date)
 
 
 def fmt_date(value):
@@ -1310,15 +1375,12 @@ def _sync_central_operational_feeds(force=False):
 
         try:
             if key == "for022":
-                source = central_data.download_preferred_source("for022", token)
-                if source.get("normalized"):
-                    holder = central_data.source_frame(
-                        source["pack"],
-                        sheet_name="Datas esperadas",
-                        header=0,
-                    )
-                else:
-                    holder = BytesIO(source["raw"])
+                # Datas do cronograma são críticas. Para o FOR022 usamos o
+                # Excel bruto oficial da Central, preservando o tipo de data
+                # da própria célula e evitando qualquer ambiguidade introduzida
+                # por representações técnicas intermediárias.
+                raw_for022 = central_data.download_source_bytes("for022", token)
+                holder = BytesIO(raw_for022)
                 base, schedule_meta = read_macro_schedule(holder)
                 payload = _central_schedule_payload(
                     base,
