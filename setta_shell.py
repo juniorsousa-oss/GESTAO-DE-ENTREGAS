@@ -108,66 +108,72 @@ def render_shell(st, ui_config, sidebar_open):
 
     st.markdown(
         f"""<style>
-/* SETTA UI — App Shell Rounded V1 · fonte: Conversor MRP */
+/* SETTA UI — Layout padrão Streamlit */
 html,body,#root{{
-  height:100%!important;
   min-height:100%!important;
-  max-height:100%!important;
-  overflow:hidden!important;
+  height:auto!important;
+  max-height:none!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
 }}
-html,body{{background:#EEF3F8!important}}
+html,body{{background:#F4F7FB!important}}
 body{{
   box-sizing:border-box!important;
-  padding:18px!important;
+  padding:0!important;
   margin:0!important;
-  overflow:hidden!important;
+  overflow-y:auto!important;
 }}
 .stApp,[data-testid="stApp"]{{
   position:relative!important;
   inset:auto!important;
-  width:calc(100vw - 36px)!important;
-  height:calc(100vh - 36px)!important;
-  min-height:0!important;
-  max-height:calc(100vh - 36px)!important;
-  max-width:1680px!important;
-  margin:0 auto!important;
-  border:1px solid rgba(202,214,228,.9)!important;
-  border-radius:24px!important;
-  overflow:hidden!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:100vh!important;
+  max-height:none!important;
+  max-width:none!important;
+  margin:0!important;
+  border:0!important;
+  border-radius:0!important;
+  overflow:visible!important;
   background:#F8FAFD!important;
-  box-shadow:0 24px 70px rgba(15,27,45,.13)!important;
+  box-shadow:none!important;
 }}
 [data-testid="stAppViewContainer"]{{
   position:relative!important;
   inset:auto!important;
   width:100%!important;
-  height:100%!important;
-  min-height:0!important;
-  max-height:100%!important;
-  border-radius:24px!important;
-  overflow:hidden!important;
+  height:auto!important;
+  min-height:100vh!important;
+  max-height:none!important;
+  border-radius:0!important;
+  overflow:visible!important;
   background:{_app_background}!important;
   color:{_text_color}!important;
 }}
 [data-testid="stMain"],.stMain,section.main{{
   position:relative!important;
-  height:100%!important;
-  min-height:0!important;
-  max-height:100%!important;
-  overflow-x:hidden!important;
-  overflow-y:auto!important;
-  scrollbar-width:thin!important;
-  scrollbar-color:#CAD5E3 transparent!important;
-}}
-[data-testid="stMain"]::-webkit-scrollbar,.stMain::-webkit-scrollbar,section.main::-webkit-scrollbar{{width:9px!important}}
-[data-testid="stMain"]::-webkit-scrollbar-track,.stMain::-webkit-scrollbar-track,section.main::-webkit-scrollbar-track{{background:transparent!important}}
-[data-testid="stMain"]::-webkit-scrollbar-thumb,.stMain::-webkit-scrollbar-thumb,section.main::-webkit-scrollbar-thumb{{background:#CAD5E3!important;border-radius:999px!important}}
-[data-testid="stMainBlockContainer"],[data-testid="stAppViewBlockContainer"]{{
+  width:100%!important;
+  max-width:none!important;
   height:auto!important;
-  min-height:100%!important;
+  min-height:100vh!important;
   max-height:none!important;
+  margin:0!important;
+  overflow-x:hidden!important;
+  overflow-y:visible!important;
+}}
+[data-testid="stMainBlockContainer"],[data-testid="stAppViewBlockContainer"]{{
+  width:100%!important;
+  max-width:none!important;
+  height:auto!important;
+  min-height:100vh!important;
+  max-height:none!important;
+  margin:0!important;
   overflow:visible!important;
-  padding-bottom:48px!important;
+  padding-top:3.2rem!important;
+  padding-left:2.7rem!important;
+  padding-right:2.7rem!important;
+  padding-bottom:3rem!important;
+  box-sizing:border-box!important;
 }}
 [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],header[data-testid="stHeader"]{{
   display:none!important;
@@ -180,12 +186,14 @@ body{{
 }}
 #MainMenu{{display:none!important}}
 .block-container{{
-  max-width:1780px!important;
-  padding-top:18px!important;
+  max-width:none!important;
+  width:100%!important;
+  margin:0!important;
+  padding-top:3.2rem!important;
   padding-left:2.7rem!important;
   padding-right:2.7rem!important;
-  padding-bottom:32px!important;
-  width:100%!important;
+  padding-bottom:3rem!important;
+  box-sizing:border-box!important;
 }}
 .st-key-setta_top_controls{{
   position:absolute!important;
@@ -208,29 +216,20 @@ body{{
   box-shadow:0 2px 8px rgba(15,23,42,.06)!important;
 }}
 section[data-testid="stSidebar"]{{
-  align-self:stretch!important;
-  height:100%!important;
-  min-height:100%!important;
-  max-height:100%!important;
   background:{_surface_background}!important;
   border-right:1px solid #e8ebf0!important;
-  border-radius:24px 0 0 24px!important;
+  border-radius:0!important;
   width:260px!important;
   min-width:260px!important;
   max-width:260px!important;
   flex:0 0 260px!important;
   flex-basis:260px!important;
-  overflow-x:hidden!important;
-  overflow-y:auto!important;
-  scrollbar-width:thin!important;
-  scrollbar-color:#D6DEE8 transparent!important;
+  overflow:hidden!important;
 }}
 section[data-testid="stSidebar"]>div{{
   width:260px!important;
   min-width:260px!important;
   max-width:260px!important;
-  min-height:100%!important;
-  height:auto!important;
   box-sizing:border-box!important;
 }}
 section[data-testid="stSidebar"] .block-container{{
@@ -365,7 +364,7 @@ button[kind="primary"],button[data-testid="stBaseButton-primary"]{{background:#1
 @media(max-width:900px){{
   html,body,#root{{height:auto!important;min-height:100%!important;max-height:none!important;overflow-y:auto!important}}
   body{{padding:0!important;background:#F5F8FC!important;overflow-y:auto!important}}
-  .stApp,[data-testid="stApp"]{{width:100vw!important;height:auto!important;min-height:100vh!important;max-height:none!important;max-width:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;overflow:visible!important}}
+  .stApp,[data-testid="stApp"]{{width:100%!important;height:auto!important;min-height:100vh!important;max-height:none!important;max-width:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;overflow:visible!important}}
   [data-testid="stAppViewContainer"],[data-testid="stMain"],.stMain{{height:auto!important;min-height:100vh!important;max-height:none!important;overflow:visible!important;border-radius:0!important}}
   .block-container{{padding-top:2rem!important;padding-left:1rem!important;padding-right:1rem!important;padding-bottom:2rem!important}}
   .setta-logo-card{{min-height:105px!important;margin-bottom:1.8rem!important;padding:.9rem 1rem!important}}
