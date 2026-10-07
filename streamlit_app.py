@@ -1608,14 +1608,18 @@ def apply_operational_statuses(schedule, total_item_map):
         result["alerta_data_ativo"] = False
     result["alerta_data_ativo"] = result["alerta_data_ativo"].fillna(False).astype(bool)
 
-    # Regra operacional: projeto que já possui primeira separação/entrega entra
-    # em "Com pendências" e não deve mais gerar alerta crítico de cronograma.
+    # Regra operacional: alerta crítico de cronograma serve somente para
+    # projetos que ainda aguardam a primeira separação/entrega.
+    _contexto_mrp = result["contexto_mrp_disponivel"].fillna(False).astype(bool)
+    _qtd_pendente = result["qtd_itens_pendentes"].fillna(0).astype(int)
     _ja_em_pendencias = (
-        result["contexto_mrp_disponivel"].fillna(False).astype(bool)
+        _contexto_mrp
         & result["possui_entrega"].fillna(False).astype(bool)
-        & result["qtd_itens_pendentes"].fillna(0).astype(int).gt(0)
+        & _qtd_pendente.gt(0)
     )
-    result.loc[_ja_em_pendencias, "alerta_data_ativo"] = False
+    _ja_entregue = _contexto_mrp & _qtd_pendente.eq(0)
+    _nao_deve_alertar = _ja_em_pendencias | _ja_entregue
+    result.loc[_nao_deve_alertar, "alerta_data_ativo"] = False
 
     result["alerta_critico_ativo"] = result["alerta_data_ativo"]
     result["alerta_ativo"] = result["alerta_data_ativo"]
