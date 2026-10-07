@@ -55,8 +55,12 @@ jobs:
           shell = Path("setta_shell.py").read_text(encoding="utf-8")
           api = Path("entrega_api.py").read_text(encoding="utf-8")
           auth = Path("setta_auth.py").read_text(encoding="utf-8")
-          assert "SETTA UI — App Shell Rounded V1" in shell
-          assert "max-width:1680px!important" in shell
+          assert "SETTA UI — Layout padrão Streamlit" in shell
+          assert "SETTA UI — App Shell Rounded V1" not in shell
+          assert "height:calc(100vh - 36px)!important" not in shell
+          assert "max-width:1680px!important" not in shell
+          assert "max-width:1780px!important" not in shell
+          assert "box-shadow:0 24px 70px" not in shell
           assert "width:260px!important" in shell
           assert "entrega_api.call(" in app
           assert "setta_auth.authenticate(" in app
