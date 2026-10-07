@@ -69,7 +69,7 @@ shell_contract = [
     "SETTA UI — Layout padrão Streamlit",
     "max-width:none!important",
     "width:260px!important",
-    "border-radius:24px!important",
+    "border-radius:0!important",
     "top:18px!important",
     "left:44px!important",
     "min-height:{_header_height}px!important",
