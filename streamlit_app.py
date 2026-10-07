@@ -438,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 106
+APP_BUILD = 107
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -685,7 +685,11 @@ def normalize_op(value):
     if pd.isna(value):
         return ""
     txt = str(value).strip()
-    return txt[:-2] if txt.endswith(".0") else txt
+    if txt.endswith(".0"):
+        txt = txt[:-2]
+    elif re.fullmatch(r"\d+\.", txt):
+        txt = txt[:-1]
+    return txt
 
 
 def _parse_br_schedule_date(value):
@@ -1608,20 +1612,13 @@ def apply_operational_statuses(schedule, total_item_map):
         result["alerta_data_ativo"] = False
     result["alerta_data_ativo"] = result["alerta_data_ativo"].fillna(False).astype(bool)
 
-    # Regra operacional: alerta crítico de cronograma serve somente para
-    # projetos que ainda aguardam a primeira separação/entrega.
+    # Regra operacional: alerta crítico só é válido quando o MRP confirma
+    # pendência positiva e que ainda não houve a primeira separação.
     _contexto_mrp = result["contexto_mrp_disponivel"].fillna(False).astype(bool)
     _qtd_pendente = result["qtd_itens_pendentes"].fillna(0).astype(int)
-    _ja_em_pendencias = (
-        _contexto_mrp
-        & result["possui_entrega"].fillna(False).astype(bool)
-        & _qtd_pendente.gt(0)
-    )
-    # Zero pendências é condição terminal por si só. Não depende do
-    # contexto MRP estar atualizado na sessão para deixar de ser crítico.
-    _ja_entregue = _qtd_pendente.eq(0)
-    _nao_deve_alertar = _ja_em_pendencias | _ja_entregue
-    result.loc[_nao_deve_alertar, "alerta_data_ativo"] = False
+    _possui_entrega = result["possui_entrega"].fillna(False).astype(bool)
+    _alerta_elegivel = _contexto_mrp & _qtd_pendente.gt(0) & ~_possui_entrega
+    result.loc[~_alerta_elegivel, "alerta_data_ativo"] = False
 
     result["alerta_critico_ativo"] = result["alerta_data_ativo"]
     result["alerta_ativo"] = result["alerta_data_ativo"]
@@ -1660,7 +1657,7 @@ def apply_operational_statuses(schedule, total_item_map):
         elif terminal_saved in terminal_statuses:
             terminal_source = terminal_saved
 
-        if qty == 0:
+        if qty == 0 and context_known:
             if terminal_source:
                 base_status = "Resíduo" if terminal_source == "RESÍDUO" else terminal_source.title()
             else:
@@ -1701,7 +1698,7 @@ def apply_operational_statuses(schedule, total_item_map):
             if not priority:
                 base_status = "Pendências"
 
-        if qty == 0:
+        if qty == 0 and context_known:
             display_status = base_status
         elif special:
             display_status = base_status
