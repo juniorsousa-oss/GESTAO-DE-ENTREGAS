@@ -76,6 +76,9 @@ jobs:
           assert "DeltaGenerator.dataframe" not in app
           assert app.count("def _fmt_feed_datetime(value):") == 1
           assert app.count("def _fmt_feed_date(value):") == 1
+          assert "def _parse_br_schedule_date(value):" in app
+          assert 'raw_for022 = central_data.download_source_bytes("for022", token)' in app
+          assert 'download_preferred_source("for022", token)' not in app
           for dead_name in (
               "_load_operator_options",
               "_sync_materials_from_supabase",
