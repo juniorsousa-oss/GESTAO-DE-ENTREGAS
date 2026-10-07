@@ -438,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 105
+APP_BUILD = 106
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1617,7 +1617,9 @@ def apply_operational_statuses(schedule, total_item_map):
         & result["possui_entrega"].fillna(False).astype(bool)
         & _qtd_pendente.gt(0)
     )
-    _ja_entregue = _contexto_mrp & _qtd_pendente.eq(0)
+    # Zero pendências é condição terminal por si só. Não depende do
+    # contexto MRP estar atualizado na sessão para deixar de ser crítico.
+    _ja_entregue = _qtd_pendente.eq(0)
     _nao_deve_alertar = _ja_em_pendencias | _ja_entregue
     result.loc[_nao_deve_alertar, "alerta_data_ativo"] = False
 
