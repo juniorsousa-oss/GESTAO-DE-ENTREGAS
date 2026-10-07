@@ -1607,6 +1607,16 @@ def apply_operational_statuses(schedule, total_item_map):
     if not isinstance(result["alerta_data_ativo"], pd.Series):
         result["alerta_data_ativo"] = False
     result["alerta_data_ativo"] = result["alerta_data_ativo"].fillna(False).astype(bool)
+
+    # Regra operacional: projeto que já possui primeira separação/entrega entra
+    # em "Com pendências" e não deve mais gerar alerta crítico de cronograma.
+    _ja_em_pendencias = (
+        result["contexto_mrp_disponivel"].fillna(False).astype(bool)
+        & result["possui_entrega"].fillna(False).astype(bool)
+        & result["qtd_itens_pendentes"].fillna(0).astype(int).gt(0)
+    )
+    result.loc[_ja_em_pendencias, "alerta_data_ativo"] = False
+
     result["alerta_critico_ativo"] = result["alerta_data_ativo"]
     result["alerta_ativo"] = result["alerta_data_ativo"]
 
