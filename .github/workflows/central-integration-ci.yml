@@ -83,15 +83,14 @@ jobs:
           assert "def _parse_br_schedule_date(value):" in app
           assert 'raw_for022 = central_data.download_source_bytes("for022", token)' in app
           assert 'download_preferred_source("for022", token)' not in app
-          assert "_ja_em_pendencias" in app
-          assert "_ja_entregue" in app
-          assert "_nao_deve_alertar = _ja_em_pendencias | _ja_entregue" in app
-          assert 'result.loc[_nao_deve_alertar, "alerta_data_ativo"] = False' in app
-          alert_migration = Path("supabase/migrations/20261007_enforce_critical_alert_scope.sql")
+          assert "_alerta_elegivel" in app
+          assert "_contexto_mrp & _qtd_pendente.gt(0) & ~_possui_entrega" in app
+          assert 'result.loc[~_alerta_elegivel, "alerta_data_ativo"] = False' in app
+          alert_migration = Path("supabase/migrations/20261007_critical_alert_requires_valid_mrp_context.sql")
           assert alert_migration.exists()
           alert_sql = alert_migration.read_text(encoding="utf-8")
-          assert "coalesce(r.possui_entrega,false) = true" in alert_sql
-          assert "coalesce(r.qtd_itens_pendentes,0) = 0" in alert_sql
+          assert "coalesce(r.qtd_itens_pendentes,0) > 0" in alert_sql
+          assert "coalesce(r.possui_entrega,false) = false" in alert_sql
           for dead_name in (
               "_load_operator_options",
               "_sync_materials_from_supabase",
