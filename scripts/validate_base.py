@@ -66,8 +66,8 @@ if "_entrega_nav_query_consumed" not in app:
 
 # 3) Shell SETTA canônico.
 shell_contract = [
-    "SETTA UI — App Shell Rounded V1",
-    "max-width:1680px!important",
+    "SETTA UI — Layout padrão Streamlit",
+    "max-width:none!important",
     "width:260px!important",
     "border-radius:24px!important",
     "top:18px!important",
@@ -81,7 +81,7 @@ for token in shell_contract:
 
 if "setta_shell.render_shell(" not in app:
     fail("App não utiliza o shell SETTA modular.")
-if "SETTA UI — App Shell Rounded V1" in app:
+if "SETTA UI — Layout padrão Streamlit" in app:
     fail("CSS do shell voltou para streamlit_app.py.")
 
 # 4) Sem monkey patches globais.
