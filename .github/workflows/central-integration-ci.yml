@@ -11,6 +11,7 @@ on:
       - 'setta_auth.py'
       - 'supabase/migrations/**'
       - 'scripts/validate_base.py'
+      - 'scripts/test_operational_statuses.py'
       - 'requirements.txt'
       - '.github/workflows/central-integration-ci.yml'
   workflow_dispatch:
@@ -30,6 +31,8 @@ jobs:
           python -m py_compile streamlit_app.py central_entregas_data.py setta_shell.py entrega_api.py setta_auth.py scripts/validate_base.py
       - name: Validar baseline do aplicativo
         run: python scripts/validate_base.py
+      - name: Testar classificação de OPs com zero pendências
+        run: python scripts/test_operational_statuses.py
       - name: Validar pontos da Central
         run: |
           python - <<'PY'
