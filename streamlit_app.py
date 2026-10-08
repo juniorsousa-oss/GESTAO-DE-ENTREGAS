@@ -438,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 108
+APP_BUILD = 109
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1591,12 +1591,21 @@ def apply_operational_statuses(schedule, total_item_map):
         return schedule.copy() if isinstance(schedule, pd.DataFrame) else schedule
 
     result = schedule.copy()
+    # Resumo MRP carregado e consistente: uma OP sem linhas no resumo
+    # equivale a zero pendências no relatório completo, não a uma pendência.
+    _resumo_mrp = st.session_state.get("_entrega_mrp_summary", pd.DataFrame())
+    _mrp_base_carregada = (
+        isinstance(_resumo_mrp, pd.DataFrame)
+        and not _resumo_mrp.empty
+        and bool(st.session_state.get("_entrega_mrp_summary_sync", False))
+    )
     result["status_salvo"] = result["status"].fillna("").astype(str) if "status" in result.columns else ""
     status_map, delivery_map, raw_count_map, context_map = _mrp_summary_maps()
     # Zero pendências confirmado no MRP é diferente de OP ainda sem dados do MRP.
     # Preserva a classificação como entregue mesmo se a coluna O/contexto estiver vazio.
     _qtd_mrp_por_op = result["op"].map(normalize_op).map(total_item_map)
     result["contagem_mrp_disponivel"] = _qtd_mrp_por_op.notna()
+    result["mrp_base_carregada"] = _mrp_base_carregada
     result["qtd_itens_pendentes"] = _qtd_mrp_por_op.fillna(0).astype(int)
     result["qtd_itens_mrp"] = result["op"].astype(str).map(raw_count_map).fillna(result["qtd_itens_pendentes"]).astype(int)
     result["status_projeto_mrp"] = result["op"].astype(str).map(status_map).fillna("")
@@ -1646,14 +1655,20 @@ def apply_operational_statuses(schedule, total_item_map):
         project_status = _normalize_project_status(row.get("status_projeto_mrp"))
         possui_entrega = bool(row.get("possui_entrega", False))
         stored = str(row.get("status_salvo") or row.get("status") or "").strip()
-        priority = stored == PRIORITY_STATUS
+        priority = stored == PRIORITY_STATUS and qty > 0
         special = project_status in SPECIAL_PROJECT_STATUSES
         data_alert = bool(row.get("alerta_data_ativo", False))
         special_alert = bool(row.get("alerta_status_especial", False)) or special
         attention = bool(row.get("atencao_ativo", False)) and d is not None and not pd.isna(d) and d >= today()
 
         context_known = bool(row.get("contexto_mrp_disponivel", False))
-        zero_pendencias_confirmado = qty == 0 and bool(row.get("contagem_mrp_disponivel", False))
+        # A ausência da OP no resumo de um MRP efetivamente carregado
+        # indica ausência de pendências: volta à regra original de Entregue.
+        # Sem carga MRP válida, não confunde ausência de dados com zero.
+        zero_pendencias_confirmado = qty == 0 and (
+            bool(row.get("contagem_mrp_disponivel", False))
+            or bool(row.get("mrp_base_carregada", False))
+        )
         op_sem_pendencias = qty == 0 and (zero_pendencias_confirmado or context_known)
         terminal_saved = str(stored or "").strip().upper()
         terminal_statuses = {"SUSPENSO", "CANCELADO", "RESÍDUO", "FINALIZADO", "FINALIZADA", "ENCERRADO", "ENCERRADA"}
@@ -2097,6 +2112,7 @@ _sidebar_status_slot.markdown(
 
 if page == "Dashboard":
     section_band("01 · VISÃO GERAL", "INDICADORES DO FLUXO")
+    st.caption(f"Gestão de Entregas · Versão {APP_BUILD}")
     schedule = st.session_state.schedule
     materials = st.session_state.materials
 
