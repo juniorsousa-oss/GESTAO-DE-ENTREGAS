@@ -438,7 +438,7 @@ def _update_cronograma_local(ops, status=None, responsavel=None, comentario=None
                 "comentario": str(comentario).strip(),
             })
 
-APP_BUILD = 107
+APP_BUILD = 108
 if st.session_state.get("_entrega_app_build") != APP_BUILD:
     for _key in [
         "_entrega_supabase_sync", "_entrega_mrp_summary_sync", "_entrega_bootstrap_sync",
@@ -1593,7 +1593,11 @@ def apply_operational_statuses(schedule, total_item_map):
     result = schedule.copy()
     result["status_salvo"] = result["status"].fillna("").astype(str) if "status" in result.columns else ""
     status_map, delivery_map, raw_count_map, context_map = _mrp_summary_maps()
-    result["qtd_itens_pendentes"] = result["op"].astype(str).map(total_item_map).fillna(0).astype(int)
+    # Zero pendências confirmado no MRP é diferente de OP ainda sem dados do MRP.
+    # Preserva a classificação como entregue mesmo se a coluna O/contexto estiver vazio.
+    _qtd_mrp_por_op = result["op"].map(normalize_op).map(total_item_map)
+    result["contagem_mrp_disponivel"] = _qtd_mrp_por_op.notna()
+    result["qtd_itens_pendentes"] = _qtd_mrp_por_op.fillna(0).astype(int)
     result["qtd_itens_mrp"] = result["op"].astype(str).map(raw_count_map).fillna(result["qtd_itens_pendentes"]).astype(int)
     result["status_projeto_mrp"] = result["op"].astype(str).map(status_map).fillna("")
     result["possui_entrega"] = result["op"].astype(str).map(delivery_map).fillna(False).astype(bool)
@@ -1649,6 +1653,8 @@ def apply_operational_statuses(schedule, total_item_map):
         attention = bool(row.get("atencao_ativo", False)) and d is not None and not pd.isna(d) and d >= today()
 
         context_known = bool(row.get("contexto_mrp_disponivel", False))
+        zero_pendencias_confirmado = qty == 0 and bool(row.get("contagem_mrp_disponivel", False))
+        op_sem_pendencias = qty == 0 and (zero_pendencias_confirmado or context_known)
         terminal_saved = str(stored or "").strip().upper()
         terminal_statuses = {"SUSPENSO", "CANCELADO", "RESÍDUO", "FINALIZADO", "FINALIZADA", "ENCERRADO", "ENCERRADA"}
         terminal_source = ""
@@ -1657,7 +1663,7 @@ def apply_operational_statuses(schedule, total_item_map):
         elif terminal_saved in terminal_statuses:
             terminal_source = terminal_saved
 
-        if qty == 0 and context_known:
+        if op_sem_pendencias:
             if terminal_source:
                 base_status = "Resíduo" if terminal_source == "RESÍDUO" else terminal_source.title()
             else:
@@ -1698,7 +1704,7 @@ def apply_operational_statuses(schedule, total_item_map):
             if not priority:
                 base_status = "Pendências"
 
-        if qty == 0 and context_known:
+        if op_sem_pendencias:
             display_status = base_status
         elif special:
             display_status = base_status
@@ -2361,7 +2367,10 @@ elif page == "Cronograma":
                 st.info("Nenhuma OP com Data de Separação carregada.")
             else:
                 manual_visible = schedule["status_salvo"].fillna("").astype(str).isin(MANUAL_STATUS) if "status_salvo" in schedule.columns else pd.Series(False, index=schedule.index)
-                operational_schedule = schedule[schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"]) | manual_visible].copy()
+                # Um status manual antigo não pode recolocar OP já entregue na fila ativa.
+                fila_ativa = schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])
+                nao_entregue = schedule["grupo_operacional"].ne("Entregues")
+                operational_schedule = schedule[(fila_ativa | manual_visible) & nao_entregue].copy()
 
                 cronograma_base = operational_schedule.copy()
 
