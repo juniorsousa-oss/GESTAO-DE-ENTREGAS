@@ -2121,6 +2121,16 @@ _render_setta_auth_gate()
 
 # Operações de rede são executadas somente depois que o shell SETTA foi emitido
 # e, quando exigido, depois da autenticação do usuário.
+# Cada sessão nova consulta os dados persistidos e as versões atuais da
+# Central SETTA. Os widgets continuam sem disparar recarga pesada.
+if not st.session_state.get("_entrega_sources_checked_on_page_load"):
+    try:
+        central_data.load_bundle_state.clear()
+    except Exception:
+        pass
+    _clear_shared_read_cache()
+    st.session_state["_entrega_sources_checked_on_page_load"] = True
+
 _sync_bootstrap_from_supabase()
 _sync_central_operational_feeds(force=False)
 
