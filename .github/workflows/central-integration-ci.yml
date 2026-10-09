@@ -12,6 +12,7 @@ on:
       - 'supabase/migrations/**'
       - 'scripts/validate_base.py'
       - 'scripts/test_operational_statuses.py'
+      - 'scripts/test_table_height.py'
       - 'requirements.txt'
       - '.github/workflows/central-integration-ci.yml'
   workflow_dispatch:
@@ -33,6 +34,8 @@ jobs:
         run: python scripts/validate_base.py
       - name: Testar classificação de OPs com zero pendências
         run: python scripts/test_operational_statuses.py
+      - name: Testar tabelas formatadas sem altura inválida
+        run: python scripts/test_table_height.py
       - name: Validar pontos da Central
         run: |
           python - <<'PY'
