@@ -2382,11 +2382,10 @@ elif page == "Cronograma":
             if schedule.empty:
                 st.info("Nenhuma OP com Data de Separação carregada.")
             else:
-                manual_visible = schedule["status_salvo"].fillna("").astype(str).isin(MANUAL_STATUS) if "status_salvo" in schedule.columns else pd.Series(False, index=schedule.index)
-                # Um status manual antigo não pode recolocar OP já entregue na fila ativa.
-                fila_ativa = schedule["grupo_operacional"].isin(["Aguardando separação", "Em processo"])
-                nao_entregue = schedule["grupo_operacional"].ne("Entregues")
-                operational_schedule = schedule[(fila_ativa | manual_visible) & nao_entregue].copy()
+                # Fonte de verdade: apenas a classificação operacional "Aguardando separação".
+                # Status manuais antigos não podem recolocar OP com pendência no cronograma.
+                fila_ativa = schedule["grupo_operacional"].fillna("").astype(str).eq("Aguardando separação")
+                operational_schedule = schedule.loc[fila_ativa].copy()
 
                 cronograma_base = operational_schedule.copy()
 
