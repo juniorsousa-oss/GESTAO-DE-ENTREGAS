@@ -10,6 +10,28 @@ import base64
 
 import pandas as pd
 import streamlit as st
+
+# SETTA: altura de tabelas sincronizada com o número real de linhas.
+def _setta_table_height(data, requested=None):
+    try:
+        rows = len(data)
+    except (TypeError, ValueError):
+        return requested
+    limit = requested if isinstance(requested, int) and requested > 0 else 600
+    return min(limit, max(84, 42 + 35 * (min(rows, 100) + 1)))
+
+
+def _setta_dataframe(data, *args, **kwargs):
+    kwargs["height"] = _setta_table_height(data, kwargs.get("height"))
+    return st.dataframe(data, *args, **kwargs)
+
+
+def _setta_data_editor(data, *args, **kwargs):
+    if kwargs.get("num_rows") != "dynamic":
+        kwargs["height"] = _setta_table_height(data, kwargs.get("height"))
+    return st.data_editor(data, *args, **kwargs)
+
+
 import streamlit.components.v1 as components
 from PIL import Image
 
@@ -2316,7 +2338,7 @@ if page == "Dashboard":
         dashboard_render = dashboard_view.head(50)
         if dashboard_total_exibicao > 50:
             st.caption(f"EXIBINDO 50 DE {dashboard_total_exibicao} PROJETOS. REFINE PELOS FILTROS PARA LOCALIZAR OS DEMAIS.")
-        st.dataframe(
+        _setta_dataframe(
             _style_operational_rows(dashboard_render[dashboard_cols]),
             use_container_width=True,
             hide_index=True,
@@ -2517,7 +2539,7 @@ elif page == "Cronograma":
                 editor_view.insert(0, "Selecionar", False)
 
                 with st.form("cronograma_selecao_form", clear_on_submit=False, enter_to_submit=True):
-                    edited_view = st.data_editor(
+                    edited_view = _setta_data_editor(
                         editor_view,
                         use_container_width=True,
                         hide_index=True,
@@ -2787,7 +2809,7 @@ elif page == "Cronograma":
                         project_comments = comments[comments["op"].astype(str) == op_selected]
                         if not project_comments.empty:
                             st.markdown("##### Comentários da OP")
-                            st.dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
+                            _setta_dataframe(project_comments.iloc[::-1], use_container_width=True, hide_index=True)
 
             if not schedule.empty:
                 st.divider()
@@ -2830,7 +2852,7 @@ elif page == "Cronograma":
                     'As ações abaixo consideram todas as OPs exibidas nesta tela.</div>',
                     unsafe_allow_html=True,
                 )
-                st.dataframe(
+                _setta_dataframe(
                     _with_schedule_last_change(
                         pending[["op", "cliente", "produto", "data_separacao", "status", "motivo_alerta", "tratativa_pcp"]]
                     ),
@@ -3204,7 +3226,7 @@ elif page == "Materiais":
                         editor = pendentes_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore").copy()
                         editor.insert(0, "Selecionar", False)
                         with st.form("materiais_selecao_form", clear_on_submit=False, enter_to_submit=True):
-                            edited = st.data_editor(
+                            edited = _setta_data_editor(
                                 editor,
                                 use_container_width=True,
                                 hide_index=True,
@@ -3386,7 +3408,7 @@ elif page == "Materiais":
                     if separados_view.empty:
                         st.info("Nenhum item foi marcado como separado dentro dos filtros selecionados.")
                     else:
-                        st.dataframe(
+                        _setta_dataframe(
                             separados_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
                             use_container_width=True,
                             hide_index=True,
@@ -3399,7 +3421,7 @@ elif page == "Materiais":
                     else:
                         if total_problemas > 80:
                             st.caption(f"Exibindo 80 de {total_problemas} itens com problema. Refine pelos filtros se necessário.")
-                        st.dataframe(
+                        _setta_dataframe(
                             problemas_view.head(80).drop(columns=MATERIAL_HIDDEN_VIEW_COLS, errors="ignore"),
                             use_container_width=True,
                             hide_index=True,
@@ -3572,7 +3594,7 @@ elif page == "NFs":
         if nf_view.empty:
             st.info("Nenhum registro encontrado para os filtros selecionados.")
         else:
-            st.dataframe(
+            _setta_dataframe(
                 nf_view,
                 use_container_width=True,
                 hide_index=True,
@@ -3698,7 +3720,7 @@ elif page == "Histórico":
                         "operador_tratativa", "comentario_tratativa", "encerrado_em",
                     ] if c in daily_alerts.columns
                 ]
-                st.dataframe(
+                _setta_dataframe(
                     daily_alerts[alert_cols],
                     use_container_width=True,
                     hide_index=True,
@@ -3787,7 +3809,7 @@ elif page == "Histórico":
                         | view["detalhe"].astype(str).str.lower().str.contains(term, na=False)
                     )
                     view = view[mask]
-                st.dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
+                _setta_dataframe(view.iloc[::-1], use_container_width=True, hide_index=True)
 
             st.divider()
             st.markdown("#### Importações realizadas")
@@ -3795,7 +3817,7 @@ elif page == "Histórico":
             if imports.empty:
                 st.caption("Nenhuma importação registrada nesta sessão.")
             else:
-                st.dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
+                _setta_dataframe(imports.iloc[::-1], use_container_width=True, hide_index=True)
 
             st.info(
                 "O cronograma, a carga MRP, a base tratada de NFs, o andamento operacional dos materiais e o registro diário "
@@ -3873,7 +3895,7 @@ def _render_cronograma_feed():
                 )
 
             preview = base[base["data_separacao"].notna()].sort_values(["data_separacao", "op"]).head(20)
-            st.dataframe(
+            _setta_dataframe(
                 preview,
                 use_container_width=True,
                 hide_index=True,
@@ -3963,7 +3985,7 @@ def _render_mrp_feed():
             else:
                 context_col = raw.columns[14]
                 preview = raw[MATERIAL_COLS + [context_col]].head(20)
-                st.dataframe(preview, use_container_width=True, hide_index=True)
+                _setta_dataframe(preview, use_container_width=True, hide_index=True)
                 st.caption(
                     f"{len(raw)} linha(s) encontradas. A coluna O será preservada e dividida em contexto, status do projeto e situação de separação."
                 )
@@ -4047,7 +4069,7 @@ def _render_nf_feed():
                 )
 
             st.markdown("##### Prévia do relatório tratado")
-            st.dataframe(
+            _setta_dataframe(
                 treated_nf.head(100),
                 use_container_width=True,
                 hide_index=True,
@@ -4404,7 +4426,7 @@ def _render_historical_loader():
                 "data_referencia", "arquivo_nome", "qtd_ops",
                 "qtd_com_data", "qtd_sem_data"
             ]
-            st.dataframe(
+            _setta_dataframe(
                 registered_df[show_cols],
                 use_container_width=True,
                 hide_index=True,
@@ -4501,7 +4523,7 @@ def _render_historical_loader():
         }
         for x in prepared
     ])
-    st.dataframe(preview, use_container_width=True, hide_index=True)
+    _setta_dataframe(preview, use_container_width=True, hide_index=True)
 
     payload = _build_history_payload(prepared)
     c1, c2, c3 = st.columns(3)
@@ -4672,7 +4694,7 @@ if globals().get("page") == "Histórico":
                     int(material_history_view["Ação"].eq("COMENTÁRIO").sum()),
                 )
 
-                st.dataframe(
+                _setta_dataframe(
                     material_history_view,
                     use_container_width=True,
                     hide_index=True,
