@@ -11,6 +11,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from api_http_errors import ApiServiceError, ensure_http_success, parse_api_response
+
 DEFAULT_SUPABASE_URL = "https://cuixazpxkvniqldmmnth.supabase.co"
 SESSION = requests.Session()
 SESSION.headers.update({"Connection": "keep-alive"})
@@ -53,19 +55,16 @@ def _headers() -> dict[str, str]:
 
 
 def central_api(action: str, payload: dict | None = None, timeout: int = 45) -> dict:
-    response = SESSION.post(
-        f"{supabase_url().rstrip('/')}/functions/v1/setta-data-api",
-        headers=_headers(),
-        json={"action": action, "payload": payload or {}},
-        timeout=timeout,
-    )
     try:
-        data = response.json()
-    except Exception:
-        data = {"ok": False, "error": response.text}
-    if not response.ok or not data.get("ok"):
-        raise RuntimeError(data.get("error") or f"HTTP {response.status_code}")
-    return data
+        response = SESSION.post(
+            f"{supabase_url().rstrip('/')}/functions/v1/setta-data-api",
+            headers=_headers(),
+            json={"action": action, "payload": payload or {}},
+            timeout=timeout,
+        )
+    except requests.exceptions.RequestException as exc:
+        raise ApiServiceError("Central SETTA", transient=True) from exc
+    return parse_api_response(response, "Central SETTA", require_ok=True)
 
 
 @st.cache_data(show_spinner=False, ttl=30, max_entries=4)
@@ -122,7 +121,7 @@ def download_source_bytes(
     if not signed_url:
         raise RuntimeError(f"Fonte {source_key} sem URL de leitura.")
     response = SESSION.get(signed_url, timeout=120)
-    response.raise_for_status()
+    ensure_http_success(response, f"Download da fonte {source_key}")
     return response.content
 
 
@@ -141,7 +140,7 @@ def download_normalized_source(
     if not signed_url:
         raise RuntimeError(f"Fonte normalizada {source_key} sem URL de leitura.")
     response = SESSION.get(signed_url, timeout=120)
-    response.raise_for_status()
+    ensure_http_success(response, f"Download normalizado de {source_key}")
     pack = json.loads(gzip.decompress(response.content).decode("utf-8"))
     if str(pack.get("format") or "") != "SETTA_SOURCE_V1":
         raise RuntimeError(f"Formato normalizado inválido para {source_key}.")
@@ -237,7 +236,7 @@ def download_derived_frame(
     if not signed_url:
         raise RuntimeError(f"Base {base_key} sem URL de leitura.")
     response = SESSION.get(signed_url, timeout=120)
-    response.raise_for_status()
+    ensure_http_success(response, f"Download da base {base_key}")
     raw = gzip.decompress(response.content)
     return pd.read_json(io.BytesIO(raw), orient="table")
 
