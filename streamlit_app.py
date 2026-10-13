@@ -51,6 +51,7 @@ import central_entregas_data as central_data
 import setta_shell
 import entrega_api
 import setta_auth
+from api_http_errors import is_temporary_failure, safe_error_text
 
 try:
     _GLOBAL_VISUAL_CONFIG = central_data.load_visual_config()
@@ -1304,7 +1305,7 @@ def _nf_payload_rows(df):
 
 
 
-def _central_sync_state(force=False):
+def _central_sync_state(force=False, raise_on_error=False):
     try:
         result = _cached_supabase_read(
             "central_sync_status",
@@ -1320,6 +1321,8 @@ def _central_sync_state(force=False):
             if isinstance(row, dict)
         }
     except Exception:
+        if raise_on_error:
+            raise
         return {}
 
 
@@ -1379,15 +1382,17 @@ def _sync_central_operational_feeds(force=False):
 
     try:
         bundle = central_data.load_bundle_state()
+        # Sem conhecer as versões já salvas, não iniciar gravações redundantes.
+        states = _central_sync_state(force=force, raise_on_error=True)
     except Exception as exc:
-        st.session_state["_central_feed_error"] = str(exc)
+        st.session_state["_central_feed_error"] = safe_error_text(exc)
         return
 
     sources = bundle.get("sources") or {}
     derived = bundle.get("derived") or {}
-    states = _central_sync_state(force=force)
     changed_any = False
     messages = []
+    errors = []
 
     jobs = [
         ("for022", sources.get("for022") or {}),
@@ -1501,18 +1506,27 @@ def _sync_central_operational_feeds(force=False):
             messages.append(key)
 
         except Exception as exc:
-            try:
-                _central_commit_state(
-                    key,
-                    token,
-                    meta.get("last_update_at") or meta.get("processed_at"),
-                    0,
-                    status="ERRO",
-                    error_message=str(exc)[:1000],
-                )
-            except Exception:
-                pass
-            st.session_state["_central_feed_error"] = f"{key}: {exc}"
+            message = safe_error_text(exc)
+            # Queda de serviço (HTTP 521, timeouts etc.) não invalida a
+            # última base operacional sincronizada no banco.
+            if not is_temporary_failure(exc):
+                try:
+                    _central_commit_state(
+                        key,
+                        token,
+                        meta.get("last_update_at") or meta.get("processed_at"),
+                        0,
+                        status="ERRO",
+                        error_message=message,
+                    )
+                except Exception:
+                    pass
+            errors.append(f"{key}: {message}")
+
+    if errors:
+        st.session_state["_central_feed_error"] = " • ".join(errors)[:900]
+    else:
+        st.session_state.pop("_central_feed_error", None)
 
     if changed_any:
         _clear_shared_read_cache()
@@ -1998,10 +2012,10 @@ def _sidebar_operational_status():
         str((states.get(key) or {}).get("status") or "").upper() == "ERRO"
         for key in keys
     )
-    if ok_count == len(keys):
-        status = "ATUALIZADO"
-    elif has_error:
+    if has_error:
         status = "ERRO"
+    elif ok_count == len(keys) and not st.session_state.get("_central_feed_error"):
+        status = "ATUALIZADO"
     else:
         status = "ATENÇÃO"
 
@@ -4139,11 +4153,11 @@ def _render_feeding_center():
 
     try:
         bundle = central_data.load_bundle_state()
-        sync_state = _central_sync_state()
+        sync_state = _central_sync_state(raise_on_error=True)
     except Exception as exc:
         bundle = {"sources": {}, "derived": {}}
         sync_state = {}
-        st.warning(f"Não foi possível consultar a Central: {exc}")
+        st.warning(f"Não foi possível consultar a Central: {safe_error_text(exc)}")
 
     sources = bundle.get("sources") or {}
     derived = bundle.get("derived") or {}
@@ -4178,8 +4192,23 @@ def _render_feeding_center():
 
     if st.session_state.get("_central_feed_success"):
         st.success(st.session_state.pop("_central_feed_success"))
-    if st.session_state.get("_central_feed_error"):
-        st.warning(st.session_state.get("_central_feed_error"))
+    source_errors = [
+        key for key, state in sync_state.items()
+        if key in ("for022", "relatorio_mrp", "nf")
+        and str(state.get("status") or "").upper() == "ERRO"
+    ]
+    feed_error = st.session_state.get("_central_feed_error")
+    if feed_error:
+        st.warning(safe_error_text(feed_error))
+    if feed_error or source_errors:
+        st.caption(
+            "A base anterior permanece preservada. Quando a conexão normalizar, "
+            "execute uma nova verificação para sincronizar as pendências."
+        )
+        if st.button("TENTAR SINCRONIZAR NOVAMENTE", key="central_retry_sources"):
+            retry_requested = True
+            _sync_central_operational_feeds(force=retry_requested)
+            st.rerun()
 
     st.divider()
     with st.expander("CONTINGÊNCIA", expanded=False):
