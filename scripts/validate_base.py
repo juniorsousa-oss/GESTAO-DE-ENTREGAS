@@ -4,6 +4,8 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def read(path):
@@ -31,6 +33,7 @@ required_files = [
     "entrega_api.py",
     "setta_auth.py",
     "central_entregas_data.py",
+    "api_http_errors.py",
     ".streamlit/config.toml",
     "supabase/migrations/20261004_fase3_security.sql",
     "supabase/migrations/20261004_mrp_sync_lock.sql",
