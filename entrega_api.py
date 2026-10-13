@@ -6,6 +6,8 @@ de session_state ou da interface Streamlit.
 
 import requests
 
+from api_http_errors import parse_api_response
+
 SUPABASE_PROJECT_URL = "https://cuixazpxkvniqldmmnth.supabase.co"
 SUPABASE_EDGE_URL = f"{SUPABASE_PROJECT_URL}/functions/v1/entrega-cronograma-api"
 
@@ -84,10 +86,7 @@ def _rpc_payload(action, payload):
 
 
 def _json_response(response):
-    try:
-        return response.json()
-    except Exception:
-        return {"error": response.text}
+    return parse_api_response(response, "Gestão de Entregas")
 
 
 def call(key, action, payload=None, timeout=45):
@@ -109,12 +108,6 @@ def call(key, action, payload=None, timeout=45):
             timeout=timeout,
         )
         data = _json_response(response)
-        if not response.ok:
-            raise RuntimeError(
-                data.get("message")
-                or data.get("error")
-                or f"Erro HTTP {response.status_code}"
-            )
         return {"data": data or []}
 
     if action not in EDGE_ACTIONS:
@@ -127,6 +120,4 @@ def call(key, action, payload=None, timeout=45):
         timeout=timeout,
     )
     data = _json_response(response)
-    if not response.ok:
-        raise RuntimeError(data.get("error") or f"Erro HTTP {response.status_code}")
     return data
