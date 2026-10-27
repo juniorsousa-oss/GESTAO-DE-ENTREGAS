@@ -114,7 +114,7 @@ begin
          and coalesce(r.possui_entrega,false) = false
      );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.entrega_salvar_materiais_central_seguro(p_arquivo_nome text, p_rows jsonb, p_version_token text, p_source_updated_at timestamp with time zone DEFAULT NULL::timestamp with time zone)
  RETURNS jsonb
@@ -215,7 +215,7 @@ begin
     'alerts_revalidated', true
   );
 end;
-$function$
+$function$;
 
 -- Regravar definição preserva proprietário e grants existentes.
 -- Funções administrativas continuam restritas ao service_role.
