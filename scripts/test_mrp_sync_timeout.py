@@ -9,6 +9,7 @@ ROOT=Path(__file__).resolve().parents[1]
 migration=(ROOT/"supabase/migrations/20261027_mrp_sync_remove_duplicate_rebuild.sql").read_text(encoding="utf-8")
 app=(ROOT/"streamlit_app.py").read_text(encoding="utf-8")
 baseline=(ROOT/"supabase/migrations/20261004_mrp_sync_lock.sql").read_text(encoding="utf-8")
+timeout_migration=(ROOT/"supabase/migrations/20261103_mrp_sync_scoped_timeout.sql").read_text(encoding="utf-8")
 
 assert migration.count("CREATE OR REPLACE FUNCTION public.entrega_salvar_materiais_central_seguro(")==1
 assert migration.count("CREATE OR REPLACE FUNCTION public.entrega_sincronizar_alertas_status_mrp(")==1
@@ -43,4 +44,7 @@ assert '"save_materials_central"' in app
 assert '"version_token": token' in app
 assert '"relatorio_mrp"' in app
 assert 'if not is_temporary_failure(exc):' in app
+assert "SET statement_timeout TO '30s'" in timeout_migration
+assert "ALTER FUNCTION public.entrega_salvar_materiais_central_seguro(" in timeout_migration
+assert 'if not force and previous_token == token and previous_status == "ERRO":' in app
 print("GESTAO_ENTREGAS_MRP_TIMEOUT_REGRESSION_OK")
