@@ -1410,10 +1410,13 @@ def _sync_central_operational_feeds(force=False):
             else central_data.source_token(meta)
         )
         previous = states.get(key) or {}
-        if (
-            str(previous.get("version_token") or "") == token
-            and str(previous.get("status") or "").upper() == "ATUALIZADO"
-        ):
+        previous_token = str(previous.get("version_token") or "")
+        previous_status = str(previous.get("status") or "").upper()
+        if previous_token == token and previous_status == "ATUALIZADO":
+            continue
+        # Erro no mesmo token: nao iniciar cargas pesadas a cada sessao/rerun.
+        # O botao de reprocessamento manual chama esta rotina com force=True.
+        if not force and previous_token == token and previous_status == "ERRO":
             continue
 
         try:
